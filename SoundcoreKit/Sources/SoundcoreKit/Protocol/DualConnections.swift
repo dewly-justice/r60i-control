@@ -1,15 +1,28 @@
 // Dual connection (multipoint) device list: docs/protocol.md §6.8.
 
-/// A Bluetooth address in display order (first octet first), as the earbuds send it.
+/// A Bluetooth address as it travels in `0B 01` records and `0B 81/82/83` writes.
+///
+/// The earbuds send it in reverse byte order: a real R60i NC reported this Mac
+/// (5C:9B:A6:6E:D3:17) as 17 D3 6E A6 9B 5C. OpenSCQ30 shows the bytes as received but sends the
+/// same bytes back, so on the wire we do the same and only reverse them for display.
 public struct MACAddress: Hashable, Sendable, CustomStringConvertible {
+    /// Bytes in wire order (reversed).
     public let bytes: [UInt8]
 
-    public init(_ bytes: [UInt8]) {
-        precondition(bytes.count == 6)
-        self.bytes = bytes
+    public init(_ wireBytes: [UInt8]) {
+        precondition(wireBytes.count == 6)
+        self.bytes = wireBytes
     }
 
-    public var description: String { bytes.map { String($0, radix: 16, uppercase: true).leftPadded(2) }.joined(separator: ":") }
+    /// From the usual display order, e.g. `[0x5C, 0x9B, …]` for 5C:9B:….
+    public init(displayOrder bytes: [UInt8]) {
+        self.init(Array(bytes.reversed()))
+    }
+
+    /// Display order, e.g. "5C:9B:A6:6E:D3:17".
+    public var description: String {
+        bytes.reversed().map { String($0, radix: 16, uppercase: true).leftPadded(2) }.joined(separator: ":")
+    }
 }
 
 public struct DualConnectionDevice: Hashable, Sendable, Identifiable {

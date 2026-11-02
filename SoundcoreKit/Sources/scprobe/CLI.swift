@@ -155,7 +155,7 @@ enum CLI {
                 let start = hex.index(hex.startIndex, offsetBy: offset)
                 return UInt8(hex[start..<hex.index(start, offsetBy: 2)], radix: 16)!
             }
-            return MACAddress(bytes)
+            return MACAddress(displayOrder: bytes)
         }
 
         switch name {

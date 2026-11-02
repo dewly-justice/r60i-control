@@ -162,7 +162,8 @@ struct DualConnectionTests {
             address: MACAddress([0x66, 0x14, 0x92, 0x2C, 0x3A, 0xD4]),
             name: "Pixel 6a"
         )])
-        #expect(packet.devices[0].address.description == "66:14:92:2C:3A:D4")
+        #expect(packet.devices[0].address.description == "D4:3A:2C:92:14:66") // displayed reversed
+        #expect(MACAddress(displayOrder: [0xD4, 0x3A, 0x2C, 0x92, 0x14, 0x66]) == packet.devices[0].address)
     }
 
     /// OpenSCQ30 test `no_string_null_termination`.

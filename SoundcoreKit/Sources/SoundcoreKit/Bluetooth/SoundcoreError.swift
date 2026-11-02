@@ -19,6 +19,8 @@ public enum SoundcoreError: Error, Equatable, Sendable, CustomStringConvertible,
     case encode(EncodeError)
     case notConnected
     case unconfirmedModel(String)
+    /// The earbuds acknowledged a write but the state doesn't show it.
+    case notApplied(String)
 
     public var description: String {
         switch self {
@@ -67,6 +69,8 @@ public enum SoundcoreError: Error, Equatable, Sendable, CustomStringConvertible,
             "The earbuds aren't connected."
         case let .unconfirmedModel(details):
             "Refusing to change settings: can't confirm these are D1202/D1202C earbuds (\(details))."
+        case let .notApplied(details):
+            "The earbuds accepted the change but didn't apply it. \(details)"
         }
     }
 

@@ -60,6 +60,18 @@ Consequences for our implementation:
   to it, or to `BESOTA`. Firmware update is out of scope.
 - The vendor channel was 15 here. It is still read from SDP rather than hard-coded.
 
+**macOS 27 IOBluetooth quirks** (observed 2026-11-02, handled in `SoundcoreKit`):
+- **The first RFCOMM open in a process often fails silently.** `openRFCOMMChannelAsync` returns
+  success but never calls `rfcommChannelOpenComplete`, and the sync variant returns
+  `kIOReturnError` (`0xE00002BC`) after about 3.1 s. bluetoothd's log shows no open request at
+  all. An immediate second attempt opens in 0.1–0.5 s. `RFCOMMLink.open` gives the first
+  attempt a 4 s timeout and retries.
+- **Connect notifications arrive on a private queue**
+  (`com.apple.bluetooth.iobluetooth.coordinatorQueue`), not the main thread. Main-actor code
+  called from there traps. Every IOBluetooth callback hops to the main actor.
+- **Only one control client at a time.** While the Soundcore phone app holds the channel, the
+  Mac's open fails. Close the phone app.
+
 ---
 
 ## 2. Frame format
@@ -158,7 +170,7 @@ device pushes them.
 | EQ band value | `byte = tenths_of_dB + 120`. So `120` = 0.0 dB, `0` = −12.0 dB, `254` = +13.4 dB. One step is 0.1 dB. | `sc/common/structures/equalizer_configuration.rs` (`CommonEqualizerConfiguration` = min −120, max 134, 1 fraction digit), `volume_adjustments.rs` |
 | EQ channel absent | if the **first** byte of a 10-byte channel block is `0xFF`, the whole channel is "not present". When writing an absent channel, send ten `0xFF` bytes. | `sc/common/structures/volume_adjustments.rs` (`take_optional`, `OptionalVolumeAdjustmentsExt::bytes`) |
 | Button action byte | low nibble = action when **both buds are linked** (TWS connected); high nibble = action when **one bud is used alone**. Nibble `0xF` = gesture disabled. | `sc/common/structures/button_configuration.rs` (`ActionKind::TwsLowBits`) |
-| Unknown enum values | OpenSCQ30 maps an unrecognized enum byte to the enum's first variant. **We keep the raw byte when reading. Writes refuse** if a field to be written holds a value outside the documented set, so we never send a value the device didn't report. | `sc/common/macros.rs` (`sound_mode_enum!`); ours: `Sources/SoundcoreProtocol/SoundModes.swift` |
+| Unknown enum values | OpenSCQ30 maps an unrecognized enum byte to the enum's first variant. **We keep the raw byte when reading. Writes refuse** if a field to be written holds a value outside the documented set, so we never send a value the device didn't report. | `sc/common/macros.rs` (`sound_mode_enum!`); ours: `SoundcoreKit/Sources/SoundcoreKit/Protocol/SoundModes.swift` |
 
 ---
 
@@ -240,6 +252,14 @@ Where it differs from the OpenSCQ30 fixture:
 | 137–138 | Spatial audio | `01 00` → **on**, Music. Unverified whether the R60i NC has spatial audio (§10) |
 | 139+ | trailing | `01 00 00 00 00 00 00 01 FF FF FF FF FF` |
 
+Bytes that change on their own (no write involved), seen across reads on the same day:
+- Sound-modes byte 1, low nibble (adaptive): `5`, then `3`. It looks like a live adaptive
+  level.
+- Offset 139 (`0x8B`, first trailing byte): `01`, `00`, `01`, `00`. Meaning unknown.
+
+After an `03 87` EQ write, offset 60 (`0x3C`) reads `00` (it was `FF`). That matches the two
+"unknown" bytes the EQ body always sends as `00 00` (§7.3), and OpenSCQ30's fixture.
+
 ### 6.2 Sound modes block (8 bytes) — also the `06 01` push body and the `06 81` write body
 
 Source: `sc/d1202/structures.rs:18-97`,
@@ -297,9 +317,14 @@ byte 1     index of this packet, starting at 1
 then repeat until body ends:
   1   record length L (counts from this byte to end of record; OpenSCQ30 emits 0x28 = 40)
   1   connected — bool
-  6   MAC address, transmitted in display order (first octet first)
+  6   MAC address, in **reverse** byte order (last octet first)
   L-8 device name, UTF-8, padded with zeros (stop at first 0x00)
 ```
+
+**Byte order, verified on hardware.** A real R60i NC reported this Mac (`5C:9B:A6:6E:D3:17`) as
+`17 D3 6E A6 9B 5C` and an iPhone (`A8:AB:B5:01:16:3D`) as `3D 16 01 B5 AB A8`. OpenSCQ30 shows
+the bytes as received, so it displays addresses reversed. It also sends the same bytes back in
+`0B 81/82/83`, which is correct on the wire. We do the same and only reverse for display.
 
 When a packet with index 1 arrives, OpenSCQ30 clears its device list. Real devices have
 been seen sending a last record that is a few bytes shorter than its length byte says.
@@ -415,6 +440,30 @@ Source: `sc/d1202/modules/equalizer/state_modifier.rs`.
   `10 81 [01, 00, newMode]`.
 - If one request changes both EQ and spatial audio, OpenSCQ30 sends only the EQ packet.
 
+### 7.5 Verified on a real R60i NC
+
+Firmware 03.89, 2026-11-02, connected to a Mac (only the right bud out of the case, so TWS
+not linked). Each write was sent with `scprobe set …`, then the state was re-read and the
+setting restored. Every one was acknowledged with an empty-body frame, as §3 describes.
+
+| Write | Result |
+|---|---|
+| `06 81` mode, NC mode, manual level, multi-scene, transparency, wind, real-time adaptive | applied and restored. The adaptive nibble was sent back as read (§6.2) |
+| `03 87` preset (Acoustic), custom EQ, Soundcore Signature | applied; spatial audio turned off, as §7.4 says. HearID bytes unchanged (type `FF` sent back as `FF`) |
+| `10 81` spatial audio on (Music, Movie) / off via `03 87` | applied and restored |
+| `04 81` right double press (solo nibble, since TWS was not linked) | applied and restored |
+| `01 86` auto power-off 60 → 30 min | applied and restored |
+| `01 83` touch tone, `10 82` low-battery prompt | applied and restored |
+| `20 82` volume limit 85 dB on → 90 dB off, `20 81` refresh rate | applied and restored |
+| `0B 84` dual connection off → on | applied and restored |
+| `0B 01` device list | 2 records, MAC bytes reversed (§6.8) |
+| `01 FF` LDAC on | **acknowledged but not applied**: offset 0x82 stayed `00`, no `01 7F` push. Same result with dual connection off |
+| `04 82` reset buttons, `0B 81/82/83` | not tested on hardware. Reset can't be undone while TWS is unlinked (only one nibble is writable), and forget can't be undone at all |
+
+Restoring the EQ needed one extra write. Every OpenSCQ30 preset sets hidden band 10 to −12 dB
+(byte `00`), and the earbuds had `78` there. A `03 87` with preset 0 and the original ten
+`78` bytes, followed by `10 81 [01 00 00]`, restored it.
+
 ---
 
 ## 8. Enumerations
@@ -528,10 +577,12 @@ This is the complete list, so it is the upper limit of what the app can offer:
 - HearID: we only echo the values back unchanged. We won't build HearID features. On a real
   R60i NC that has never run HearID, these bytes are `FF` and the type byte (86) is `FF`,
   outside OpenSCQ30's enum. Check how `03 87` (§7.3) handles that before Phase 2 sends any EQ write.
-- Spatial audio: a real R60i NC reports it **on**. The R60i NC shares OpenSCQ30's module
-  with the P31i, so check against the Soundcore app before the app exposes spatial audio.
-- Adaptive ANC nibble: the R60i NC reports `5`, outside OpenSCQ30's `0…2` names. It may be a
-  1–5 level, as on some other models. It is read-only either way (§6.2).
+- Spatial audio: confirmed on the R60i NC (Music/Movie on and off all apply, §7.5).
+- LDAC: the R60i NC acknowledges `01 FF [01]` but keeps LDAC off while connected to a Mac,
+  with dual connection on or off. It may need an LDAC-capable source; unverified.
+- Adaptive ANC nibble: the R60i NC reports values outside OpenSCQ30's `0…2` names (`5`, `3`),
+  changing on its own. It looks like a live level. It is read-only either way (§6.2).
+- State offset `0x8B`: flips between `00` and `01` on its own. Meaning unknown.
 - Whether the device acknowledges `0B 81` / `0B 82`: OpenSCQ30 doesn't wait for an ACK, and
   neither will we.
 
@@ -558,19 +609,28 @@ Full state reply header            09 FF 00 00 01 01 01 A2 00 …152-byte body�
 
 ---
 
-## 12. What `scprobe` (Phase 1) sends
+## 12. What `scprobe` and the app send
 
-| When | Packet |
+Both use `SoundcoreKit`'s `SoundcoreDevice`, so they send exactly the same packets.
+
+| When | Packets |
 |---|---|
-| Connect | `01 01` RequestState, then parse §6.1 |
-| `set-mode anc\|transparency\|normal` | confirm the model (vendor UUID suffix `1202C`/`D1202`) → read state → copy the 8-byte sound-modes block → change **only byte 0** → apply the same normalizations OpenSCQ30 does (byte 5 = 0; manual level clamped to 1–5; wind bits 0–1 only), except that the read-only adaptive nibble is sent back as reported (§6.2). Refuse if any other enum byte is unknown → send `06 81` → wait for ACK → send `01 01` again to confirm the change |
+| Connect | `01 01` RequestState (§6.1); if dual connection is on, `0B 01` (§6.8) |
+| While connected | `01 01` again every 5 minutes and when the menu opens: the case battery has no push |
+| Any setting change | the one write from §7.2 for that setting, built from the last state read, then wait for the ACK. EQ, spatial audio, button reset, LDAC and dual connection also re-read the state afterwards |
 
-The connection only ever uses the vendor service (§1). It never uses the Serial Port or OTA
-channels.
+Rules every write follows:
+- The model must be confirmed by the vendor UUID suffix (`1202C`/`D1202`), otherwise writes are
+  refused.
+- Sound-mode writes copy the 8-byte block, change only the requested field, apply OpenSCQ30's
+  normalizations (byte 5 = 0; manual level 1–5; wind bits 0–1), and send the read-only
+  adaptive nibble back as reported (§6.2). They refuse if another enum byte is unknown.
+- EQ writes send the HearID block back as reported (§7.3).
+- Button writes change only the nibble for the current TWS state (§8.7).
+- If the earbuds don't acknowledge a write (3 attempts, §3), the cached state is rolled back and
+  re-read.
+- The connection only ever uses the vendor service (§1), never the Serial Port or OTA channels.
 
-For the real R60i NC capture (sound modes `02 55 00 01 01 00 00 01`), `set-mode transparency`
-sends `08 EE 00 00 00 06 81 12 00 01 55 00 01 01 00 00 01 E8`. This is tested in
-`Tests/SoundcoreProtocolTests/R60iCaptureTests.swift`.
-
-Every other write in §7.2 is for Phase 2, and each one will be tested against captured
-fixtures before use.
+Example: for the real R60i NC capture (sound modes `02 55 00 01 01 00 00 01`), switching to
+Transparency sends `08 EE 00 00 00 06 81 12 00 01 55 00 01 01 00 00 01 E8`. This is tested in
+`SoundcoreKit/Tests/SoundcoreKitTests/R60iCaptureTests.swift`.

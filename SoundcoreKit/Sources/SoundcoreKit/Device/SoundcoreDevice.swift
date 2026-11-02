@@ -513,11 +513,15 @@ public final class SoundcoreDevice {
         try await perform(Requests.setLowBatteryPrompt(enabled)) { $0.lowBatteryPrompt = enabled }
     }
 
-    /// LDAC can affect other settings on the earbuds (e.g. dual connection), so the state is
-    /// re-read afterwards.
+    /// LDAC can affect other settings on the earbuds, so the state is re-read afterwards. A real
+    /// R60i NC connected to a Mac acknowledges `01 FF [01]` but keeps LDAC off (docs/protocol.md
+    /// §7.5); that case throws `.notApplied` instead of silently flipping back.
     public func setLDAC(_ enabled: Bool) async throws(SoundcoreError) {
         guard try currentState().ldac != enabled else { return }
         try await perform(Requests.setLDAC(enabled), refreshAfter: true) { $0.ldac = enabled }
+        if state?.ldac != enabled {
+            throw .notApplied("LDAC stayed off. It may only turn on while an LDAC-capable source (such as an Android phone) is connected; Macs don't use LDAC.")
+        }
     }
 
     public func setVolumeLimit(enabled: Bool, decibels: UInt8) async throws(SoundcoreError) {
