@@ -104,34 +104,25 @@ struct SoundModeSection: View {
                 EmptyView()
             }
 
-            Toggle(isOn: model.binding({ $0.soundModes.windNoiseSuppression }, default: false) {
+            SwitchRow(title: "Wind Noise Reduction", symbol: "wind", isOn: model.binding({ $0.soundModes.windNoiseSuppression }, default: false) {
                 try await $0.setWindNoiseSuppression($1)
             }) {
-                HStack(spacing: 6) {
-                    Label("Wind Noise Reduction", systemImage: "wind")
-                    if modes.windDetected {
-                        Text("Wind detected")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                if modes.windDetected {
+                    Text("Wind detected")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .toggleStyle(.switch)
-            .controlSize(.small)
         }
         .animation(.snappy, value: modes.raw)
     }
 
     @ViewBuilder
     private func noiseCancelingOptions(_ modes: SoundModes) -> some View {
-        Toggle(isOn: Binding(
+        SwitchRow(title: "Adaptive ANC", symbol: "sparkles", isOn: Binding(
             get: { modes.noiseCancelingMode == .adaptive },
             set: { adaptive in model.perform { try await $0.setNoiseCancelingMode(adaptive ? .adaptive : .manual) } }
-        )) {
-            Label("Adaptive ANC", systemImage: "sparkles")
-        }
-        .toggleStyle(.switch)
-        .controlSize(.small)
+        ))
 
         switch modes.noiseCancelingMode {
         case .manual?:

@@ -10,10 +10,11 @@ struct BatteryGauge: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Image(systemName: level.symbol(charging: charging) ?? "minus")
+            Image(systemName: level.symbol(charging: charging) ?? "battery.0percent")
                 .symbolRenderingMode(.hierarchical)
                 .font(.title3)
                 .foregroundStyle(tint)
+                .opacity(level.isAvailable ? 1 : 0.35)
                 .frame(height: 20)
             Text(level.percent.map { "\($0)%" } ?? "—")
                 .font(.callout.weight(.medium))
@@ -28,7 +29,7 @@ struct BatteryGauge: View {
     }
 
     private var tint: Color {
-        guard let percent = level.percent else { return .secondary }
+        guard let percent = level.percent else { return .secondary.opacity(0.6) }
         if charging { return .green }
         return percent <= 20 ? .red : .primary
     }
@@ -49,6 +50,32 @@ struct BatteryRow: View {
             BatteryGauge(name: "Right", level: state.rightBattery.level, charging: state.rightBattery.isCharging)
             BatteryGauge(name: "Case", level: state.caseBattery)
         }
+    }
+}
+
+/// A label on the leading edge and a small switch on the trailing edge, for the menu panel.
+struct SwitchRow<Detail: View>: View {
+    let title: String
+    let symbol: String
+    @Binding var isOn: Bool
+    @ViewBuilder var detail: Detail
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Label(title, systemImage: symbol)
+            detail
+            Spacer(minLength: 8)
+            Toggle(title, isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
+    }
+}
+
+extension SwitchRow where Detail == EmptyView {
+    init(title: String, symbol: String, isOn: Binding<Bool>) {
+        self.init(title: title, symbol: symbol, isOn: isOn) { EmptyView() }
     }
 }
 

@@ -132,7 +132,7 @@ struct EqualizerEditor: View {
                         commit(draft.map { Int(($0 * 10).rounded()) })
                         self.draft = nil
                     }
-                    .frame(height: 140)
+                    .frame(height: 110)
                     .accessibilityLabel("\(frequencyLabel(hz)) band")
                     Text(frequencyLabel(hz))
                         .font(.caption2)

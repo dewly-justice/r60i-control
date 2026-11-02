@@ -24,7 +24,7 @@ struct SettingsView: View {
                 GeneralTab()
             }
         }
-        .frame(width: 560, height: 520)
+        .frame(width: 560, height: 580)
         .overlay(alignment: .bottom) {
             if let error = model.error {
                 ErrorBanner(message: error.message) { model.dismissError() }
