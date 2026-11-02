@@ -16,34 +16,26 @@ struct ControlsTab: View {
         RequiresConnection { state in
             let linked = state.tws.isConnected
             Form {
+                // One section per earbud, one row per gesture, as in System Settings → AirPods.
+                Section("Left Earbud") {
+                    gestureRows(state: state, side: .left)
+                }
                 Section {
-                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
-                        GridRow {
-                            Text("")
-                            Text("Left").font(.headline)
-                            Text("Right").font(.headline)
-                        }
-                        ForEach(GestureKind.allCases) { kind in
-                            GridRow {
-                                Text(kind.displayName)
-                                    .gridColumnAlignment(.leading)
-                                picker(state: state, side: .left, kind: kind)
-                                picker(state: state, side: .right, kind: kind)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
+                    gestureRows(state: state, side: .right)
                 } header: {
-                    Text("Touch Controls")
+                    Text("Right Earbud")
                 } footer: {
                     Text(linked
-                        ? "These are the controls while both earbuds are in use."
-                        : "Only one earbud is in use, so these are the single-earbud controls. Use both earbuds to edit the two-earbud controls.")
+                        ? "These controls apply while you wear both earbuds."
+                        : "You're wearing one earbud, so these are the one-earbud controls. Wear both to edit the two-earbud controls.")
                 }
 
                 Section {
-                    Button("Reset Controls to Defaults…", role: .destructive) {
-                        confirmingReset = true
+                    LabeledContent {
+                        Button("Reset…") { confirmingReset = true }
+                    } label: {
+                        Text("Reset Touch Controls")
+                        Text("Restores the default action for every gesture on both earbuds.")
                     }
                 }
             }
@@ -58,13 +50,21 @@ struct ControlsTab: View {
         }
     }
 
+    @ViewBuilder
+    private func gestureRows(state: D1202State, side: EarbudSide) -> some View {
+        // Row IDs must differ between the two sections, or the form mixes up their rows.
+        ForEach(GestureKind.allCases.map { ButtonGesture(side: side, kind: $0) }, id: \.self) { gesture in
+            picker(state: state, side: gesture.side, kind: gesture.kind)
+        }
+    }
+
     private func picker(state: D1202State, side: EarbudSide, kind: GestureKind) -> some View {
         let gesture = ButtonGesture(side: side, kind: kind)
         let nibble = state.buttons.currentNibble(gesture, budsLinked: state.tws.isConnected)
         let current: Choice = nibble == ButtonAction.disabledNibble
             ? .disabled
             : ButtonAction(rawValue: nibble).map(Choice.action) ?? .unknown(nibble)
-        return Picker("\(side.displayName) \(kind.displayName)", selection: Binding(
+        return Picker(kind.title, selection: Binding(
             get: { current },
             set: { choice in
                 let action: ButtonAction?
@@ -83,7 +83,6 @@ struct ControlsTab: View {
                 Text("Unknown (\(raw))").tag(Choice.unknown(raw))
             }
         }
-        .labelsHidden()
-        .frame(width: 170)
+        .accessibilityLabel("\(side.displayName) \(kind.title)")
     }
 }

@@ -93,6 +93,16 @@ extension ButtonAction {
 }
 
 extension GestureKind {
+    /// Row title, in title case like System Settings.
+    var title: String {
+        switch self {
+        case .single: "Single Tap"
+        case .double: "Double Tap"
+        case .triple: "Triple Tap"
+        case .long: "Press and Hold"
+        }
+    }
+
     var symbol: String {
         switch self {
         case .single: "hand.tap"
