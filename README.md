@@ -1,91 +1,118 @@
-# Soundcore R60i NC for macOS
+# R60i Control
 
-A native macOS controller for **Soundcore R60i NC** earbuds (model ID D1202C). It replaces the
-Soundcore mobile app, which has no Mac version.
+A native macOS menu bar app for **Soundcore R60i NC** earbuds (model ID D1202C). It replaces the
+Soundcore mobile app, which has no Mac version. Built for personal use on Apple Silicon and
+macOS 27.
 
-**Status: Phase 1.** The repo has `scprobe`, a command-line probe that proves the Bluetooth
-transport and protocol against the real earbuds. The menu-bar app (Phase 2) comes next.
+- **Menu bar:** battery for left, right and case; Noise Cancelling / Normal / Transparency;
+  adaptive ANC; manual ANC strength; scene and transparency options; wind noise reduction.
+- **Settings (⌘,):** noise control details, equalizer (22 presets plus custom 8-band), spatial
+  audio, LDAC, touch controls per gesture per earbud, dual connection and its device list, auto
+  power-off, touch tone, low-battery prompt, volume limit, device info.
+- **Behavior:** connects automatically when the earbuds connect to the Mac, reconnects after
+  drops and sleep, reads the earbuds' state on connect so the UI always matches them, and shows
+  clearly when they aren't connected. Optional global shortcut to cycle the sound mode.
 
-- Protocol: [`docs/protocol.md`](docs/protocol.md)
-- Requirements: Apple Silicon Mac, macOS 27, Xcode 27 (Swift 6.4). No third-party dependencies.
+Only settings whose packets are documented in [OpenSCQ30](https://github.com/Oppzippy/OpenSCQ30)
+are offered; see [`docs/protocol.md`](docs/protocol.md). Firmware updates and HearID are out of
+scope.
 
 ## Build and run
 
-```sh
-swift build                                  # builds everything
-swift test                                   # unit tests (no Bluetooth needed)
+Requirements: Apple Silicon Mac, macOS 27, Xcode 27 (Swift 6.4), and
+[XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
-swift run scprobe                            # connect, read and print the earbuds' state
-swift run scprobe --hexdump                  # same, logging every byte sent/received to stderr
-swift run scprobe set-mode anc               # or: transparency | normal
-swift run scprobe --listen 30                # read state, then print packets the earbuds push for 30 s
-swift run scprobe list                       # list paired devices + their Soundcore RFCOMM service
-swift run scprobe --help
+```sh
+make app      # generate R60iControl.xcodeproj with XcodeGen and build "build/R60i Control.app"
+make run      # build, then open the app
+make test     # SoundcoreKit unit tests (no Bluetooth needed)
+make probe ARGS="--hexdump"   # the command-line probe, see below
+make clean
 ```
 
-You can combine options, e.g. `swift run scprobe --hexdump set-mode transparency --listen 10`.
-The built binary is at `.build/debug/scprobe`; `swift build -c release` puts it in `.build/release/`.
+`make app` signs with your "Apple Development" certificate if the keychain has one, so macOS
+keeps the Bluetooth permission across rebuilds. Without one it signs ad hoc, and macOS may ask
+for Bluetooth permission again after each rebuild. To work in Xcode, run `make project` and
+open `R60iControl.xcodeproj`. The project file is generated, so edit `project.yml` instead.
 
-Before running:
-- Pair the earbuds with the Mac (System Settings → Bluetooth).
-- Take them out of the case. They don't need to be playing audio.
+To install, copy `build/R60i Control.app` to `/Applications`. Turn on **Open at Login** in
+Settings → General.
 
-scprobe finds them by name ("R60i") or by their Soundcore service UUID. Use `--address` if
-several devices match.
+### First launch
 
-### Bluetooth permission
+1. Pair the earbuds with the Mac in System Settings → Bluetooth (once).
+2. Open the app. It lives in the menu bar (no Dock icon) and asks for Bluetooth permission.
+   If you said no, enable it in System Settings → Privacy & Security → Bluetooth.
+3. Take the earbuds out of the case. The app connects in a few seconds.
 
-The first Bluetooth call shows a macOS permission prompt. Command-line tools usually inherit
-permission from the **terminal app** you run them in (Orca, Terminal, iTerm…), so the prompt
-names that app. If you denied it, or nothing works:
+## Things to know
 
-1. System Settings → Privacy & Security → **Bluetooth** → enable your terminal app.
-2. Quit and reopen the terminal, then run scprobe again.
+- **One controller at a time.** The earbuds accept a single control connection. While the
+  Soundcore app on your phone holds it, the Mac can't connect. Close the phone app.
+- **Touch controls follow the current situation.** As in the Soundcore app, editing a control
+  changes the two-earbud mapping when both buds are in use, and the one-earbud mapping when only
+  one is.
+- **EQ and spatial audio are linked.** The earbuds turn spatial audio off whenever the
+  equalizer changes.
+- **LDAC** is for LDAC-capable sources such as Android phones. Macs don't use it. A real R60i
+  NC connected to a Mac acknowledges "LDAC on" but keeps it off; the app reports that instead of
+  pretending it worked.
 
-The binary also embeds an `Info.plist` (`Sources/scprobe/Info.plist`, bundle ID
-`dev.local.scprobe`) with `NSBluetoothAlwaysUsageDescription`, so macOS has a usage string
-whichever process it attributes the access to.
-
-### What scprobe sends
-
-Only two commands (see `docs/protocol.md` §12):
-- `01 01` reads the state.
-- `06 81` sets sound modes, used by `set-mode`. It sends back the full 8-byte sound-modes
-  block it just read, with only the mode byte changed. It refuses if the earbuds report a
-  value outside the documented set, or if the model can't be confirmed as D1202/D1202C.
-
-It connects only to the Soundcore vendor service (channel 15 on a tested R60i NC). The
-earbuds also publish firmware-update channels (`TOTA`, `BESOTA`), and scprobe never opens
-those. Exiting closes only the RFCOMM channel. The earbuds' audio connection to the Mac
-stays up.
-
-### Troubleshooting
+## Troubleshooting
 
 | Symptom | Try |
 |---|---|
-| `No paired Bluetooth devices are visible` | Bluetooth permission for your terminal (above) |
-| `Couldn't find a paired Soundcore R60i NC` | `scprobe list`, then `--address AA-BB-CC-DD-EE-FF` |
-| `Found no Soundcore RFCOMM service` | Make sure the buds are connected to this Mac; `scprobe list` shows every RFCOMM service they publish |
-| `Opening the RFCOMM channel failed` | Take the buds out of the case; close the Soundcore app on your phone; retry |
-| `No reply to 01 01` | Re-run with `--hexdump` and send me the output |
+| "No R60i NC Paired" | Pair the earbuds in System Settings → Bluetooth |
+| "Not Connected" | Take the buds out of the case and pick them as the Mac's audio device, or click Connect |
+| "Can't Reach the Earbuds" | Close the Soundcore app on your phone, then Try Again |
+| Nothing happens after granting Bluetooth permission | Quit and reopen the app |
+| See what the app sends | `log stream --info --debug --predicate 'subsystem == "dev.local.R60iControl"'` |
+
+## scprobe: command-line probe and test harness
+
+`scprobe` drives the same `SoundcoreDevice` model as the app. Every setting change re-reads
+the state and prints exactly what changed, so it doubles as the hardware test harness.
+
+```sh
+make probe                                     # read and print everything
+make probe ARGS="--hexdump"                    # also log every byte to stderr
+make probe ARGS="set-mode anc"                 # anc | transparency | normal
+make probe ARGS="set eq acoustic"              # any setting; see --help for the list
+make probe ARGS="devices"                      # dual-connection devices
+make probe ARGS="--listen 30"                  # print packets the earbuds push for 30 s
+make probe ARGS="list"                         # paired devices and their RFCOMM services
+make probe ARGS="--help"
+```
+
+Run it from a terminal app that has Bluetooth permission. The binary embeds an Info.plist
+(bundle ID `dev.local.scprobe`) with a Bluetooth usage string.
 
 ## Layout
 
 ```
-Package.swift
-Sources/SoundcoreProtocol/   pure-Swift framing, parsing, encoding (no Bluetooth)
-Sources/scprobe/             IOBluetooth RFCOMM transport + CLI
-Tests/                       unit tests (protocol fixtures, report rendering, delegate wiring)
-docs/protocol.md             the protocol, with sources
+project.yml                  XcodeGen spec for the app (the .xcodeproj is generated)
+Makefile                     one-command build, run, test, probe
+App/                         SwiftUI menu bar app (MenuBarExtra + Settings)
+SoundcoreKit/                Swift package
+  Sources/SoundcoreKit/
+    Protocol/                framing, state parsing, every write encoder (pure Swift)
+    Bluetooth/               IOBluetooth RFCOMM link, SDP discovery, errors
+    Device/                  packet session (§3 rules) and the @Observable SoundcoreDevice
+  Sources/scprobe/           command-line probe
+  Tests/                     unit tests: OpenSCQ30 test vectors, real-device captures, fake link
+docs/protocol.md             the protocol, with sources and hardware verification (§7.5)
 vendor/OpenSCQ30             reference checkout (git-ignored)
 ```
 
 To recreate the reference checkout:
 `git clone https://github.com/Oppzippy/OpenSCQ30 vendor/OpenSCQ30 && git -C vendor/OpenSCQ30 checkout e75a68b`
 
-## Credits
+## Credits and license
 
 The protocol knowledge comes from [OpenSCQ30](https://github.com/Oppzippy/OpenSCQ30) by
 Oppzippy (GPL-3.0). This project reimplements the protocol in Swift from the description in
-`docs/protocol.md`; no OpenSCQ30 code is ported. Two things are taken from OpenSCQ30's tests as
-data: the D1202 state-packet byte fixture and the frame test vectors used in our unit tests.
+`docs/protocol.md`; no OpenSCQ30 code is ported. Some test data comes from OpenSCQ30's tests:
+the D1202 state-packet fixture and the frame, EQ, spatial-audio, button and dual-connection
+test vectors. Other fixtures were captured from a real R60i NC.
+
+Soundcore is a trademark of Anker Innovations. This project is not affiliated with Anker.
