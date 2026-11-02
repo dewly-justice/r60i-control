@@ -157,6 +157,14 @@ public final class SoundcoreDevice {
         }
     }
 
+    /// Skips the retry back-off and checks again now (auto-connect only).
+    public func retryNow() {
+        guard maintenanceTask != nil, !connecting else { return }
+        failures = 0
+        nextAttempt = .now
+        Task { [weak self] in await self?.maintain() }
+    }
+
     /// Asks macOS to connect the paired earbuds to this Mac (baseband connection). Auto-connect
     /// then opens the control channel.
     public func requestBluetoothConnection() {

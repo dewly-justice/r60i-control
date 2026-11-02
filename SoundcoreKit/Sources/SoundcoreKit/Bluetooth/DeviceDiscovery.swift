@@ -54,6 +54,18 @@ public enum DeviceDiscovery {
         "\(device.name ?? "(unnamed)") [\(device.addressString ?? "?")]"
     }
 
+    /// This Mac's Bluetooth address, to recognize it in the dual-connection device list.
+    public static var hostAddress: MACAddress? {
+        guard let text = IOBluetoothHostController.default()?.addressAsString() else { return nil }
+        let hex = text.filter(\.isHexDigit)
+        guard hex.count == 12 else { return nil }
+        let bytes = stride(from: 0, to: 12, by: 2).compactMap { offset -> UInt8? in
+            let start = hex.index(hex.startIndex, offsetBy: offset)
+            return UInt8(hex[start..<hex.index(start, offsetBy: 2)], radix: 16)
+        }
+        return bytes.count == 6 ? MACAddress(displayOrder: bytes) : nil
+    }
+
     public static var isBluetoothPoweredOn: Bool {
         IOBluetoothHostController.default()?.powerState == kBluetoothHCIPowerStateON
     }
