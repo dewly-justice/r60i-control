@@ -1,0 +1,12 @@
+# Reference checkout of OpenSCQ30 (GPL-3.0); clone with: git clone https://github.com/Oppzippy/OpenSCQ30 vendor/OpenSCQ30
+vendor/
+
+# Swift / Xcode
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# macOS
+.DS_Store
