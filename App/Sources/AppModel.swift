@@ -44,6 +44,14 @@ final class AppModel {
 
     func openSettings() { openSettingsHandler() }
 
+    /// On-device live translation (stands in for the Soundcore app's AI Translation).
+    let translator = LiveTranslator()
+
+    /// Opens the Live Translation window; set by `AppDelegate`.
+    @ObservationIgnored var openTranslationHandler: () -> Void = {}
+
+    func openTranslation() { openTranslationHandler() }
+
     /// The last custom EQ (8 bands, tenths of a dB). The earbuds forget custom values when a
     /// preset is chosen, so the app keeps them to restore "Custom".
     var customEqualizer: [Int] {

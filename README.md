@@ -54,6 +54,24 @@ The app has no Dock icon, and no menu bar icon while the earbuds are away. To re
 then (for example to change the shortcut or quit with ⌘Q), open the app again from Finder or
 Spotlight.
 
+## Live Translation (proof of concept)
+
+The Soundcore app's "AI Translation" and "Anka" assistant run in the phone app and Anker's cloud;
+the earbuds only provide the microphone and speaker, so there is nothing to switch on over
+Bluetooth. **Live Translation** (menu bar panel, or Settings → General) does the translation
+part on the Mac instead, entirely on-device:
+
+- The Mac's **built-in microphone** listens (`AVCaptureSession` on that one device). The earbuds'
+  microphone is never opened, because that would drop them from A2DP to call quality.
+- Apple's speech recognizer turns each sentence into text: `SpeechTranscriber` where it supports
+  the language (English), otherwise `DictationTranscriber` (Vietnamese). Models download on
+  first use.
+- `TranslationSession` translates it, and the translation can be read aloud. That only happens
+  while a Bluetooth device is the audio output, so the microphone doesn't hear it.
+
+It needs microphone permission. Languages: English, Vietnamese, Chinese (Simplified), Japanese,
+Korean, French, German, Spanish.
+
 ## Things to know
 
 - **One controller at a time.** The earbuds accept a single control connection. While the

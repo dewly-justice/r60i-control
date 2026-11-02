@@ -36,7 +36,7 @@ struct SettingsView: View {
             Tab("General", systemImage: "gearshape", value: .general) {
                 GeneralTab()
                     // Without the earbud sections, the pane is short; let the window shrink.
-                    .frame(width: 560, height: connected ? 580 : 340)
+                    .frame(width: 560, height: connected ? 580 : 430)
             }
         }
         .onChange(of: connected, initial: true) { _, connected in

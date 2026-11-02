@@ -46,12 +46,15 @@ targets:
         # Menu bar only: no Dock icon.
         LSUIElement: true
         NSBluetoothAlwaysUsageDescription: R60i Control talks to your Soundcore R60i NC earbuds over Bluetooth to show their battery and change their settings.
+        NSMicrophoneUsageDescription: Live Translation listens with the Mac's microphone and translates what it hears, on this Mac.
+        NSSpeechRecognitionUsageDescription: Live Translation turns speech into text on this Mac so it can be translated.
         NSHumanReadableCopyright: Personal use. Protocol knowledge from OpenSCQ30 (GPL-3.0).
     entitlements:
       path: App/R60iControl.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.device.bluetooth: true
+        com.apple.security.device.audio-input: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.local.R60iControl

@@ -51,6 +51,9 @@ struct MenuPanel: View {
 
             PanelDivider()
             VStack(spacing: 0) {
+                MenuRow(title: "Live Translation…") {
+                    model.openTranslation()
+                }
                 MenuRow(title: "Earbud Settings…") {
                     model.openSettings()
                 }

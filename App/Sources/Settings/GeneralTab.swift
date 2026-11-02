@@ -15,6 +15,15 @@ struct GeneralTab: View {
                 DeviceStatusSection()
             }
 
+            Section {
+                LabeledContent {
+                    Button("Open…") { model.openTranslation() }
+                } label: {
+                    Text("Live Translation")
+                    Text("Translates what the Mac's microphone hears, on this Mac, and can read it to you in the earbuds.")
+                }
+            }
+
             Section("App") {
                 Toggle("Open at Login", isOn: Binding(
                     get: { openAtLogin },
