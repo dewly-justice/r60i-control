@@ -128,3 +128,26 @@ extension D1202State {
         [leftBattery.level.percent, rightBattery.level.percent].compactMap { $0 }.min()
     }
 }
+
+extension SoundcoreDevice.Status {
+    /// The earbuds are connected to this Mac. The control channel may still be opening
+    /// (`connecting`) or blocked (`unavailable`), but they are here.
+    var earbudsConnectedToMac: Bool {
+        switch self {
+        case .connecting, .connected, .unavailable: true
+        case .idle, .bluetoothOff, .notPaired, .disconnected: false
+        }
+    }
+
+    /// One short line for the device header (menu bar panel, Settings).
+    var summary: String {
+        switch self {
+        case .idle, .connecting: "Connecting…"
+        case .connected: "Connected"
+        case .disconnected: "Not connected"
+        case .bluetoothOff: "Bluetooth is off"
+        case .notPaired: "Not paired with this Mac"
+        case .unavailable: "Couldn't connect"
+        }
+    }
+}

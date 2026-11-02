@@ -2,29 +2,46 @@ import SoundcoreKit
 import SwiftUI
 
 /// Settings (⌘,): everything the D1202 protocol supports beyond the menu bar panel, grouped
-/// like the Soundcore app.
+/// like the Soundcore app. As with AirPods in System Settings, the earbud panes are only there
+/// while the earbuds are connected; otherwise General shows their status and the app settings.
 struct SettingsView: View {
+    enum Pane: Hashable {
+        case noiseControl, sound, controls, connections, general
+    }
+
     @Environment(AppModel.self) private var model
+    @State private var selection = Pane.noiseControl
 
     var body: some View {
-        TabView {
-            Tab("Noise Control", systemImage: "waveform.slash") {
-                NoiseControlTab()
+        let connected = model.device.isConnected
+        TabView(selection: $selection) {
+            if connected {
+                Tab("Noise Control", systemImage: "waveform.slash", value: .noiseControl) {
+                    NoiseControlTab()
+                        .frame(width: 560, height: 580)
+                }
+                Tab("Sound", systemImage: "slider.vertical.3", value: .sound) {
+                    SoundTab()
+                        .frame(width: 560, height: 580)
+                }
+                Tab("Controls", systemImage: "hand.tap", value: .controls) {
+                    ControlsTab()
+                        .frame(width: 560, height: 580)
+                }
+                Tab("Connections", systemImage: "laptopcomputer.and.iphone", value: .connections) {
+                    ConnectionsTab()
+                        .frame(width: 560, height: 580)
+                }
             }
-            Tab("Sound", systemImage: "slider.vertical.3") {
-                SoundTab()
-            }
-            Tab("Controls", systemImage: "hand.tap") {
-                ControlsTab()
-            }
-            Tab("Connections", systemImage: "laptopcomputer.and.iphone") {
-                ConnectionsTab()
-            }
-            Tab("General", systemImage: "gearshape") {
+            Tab("General", systemImage: "gearshape", value: .general) {
                 GeneralTab()
+                    // Without the earbud sections, the pane is short; let the window shrink.
+                    .frame(width: 560, height: connected ? 580 : 340)
             }
         }
-        .frame(width: 560, height: 580)
+        .onChange(of: connected, initial: true) { _, connected in
+            if !connected { selection = .general }
+        }
         .overlay(alignment: .bottom) {
             if let error = model.error {
                 ErrorBanner(message: error.message) { model.dismissError() }

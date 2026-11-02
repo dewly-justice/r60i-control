@@ -1,23 +1,21 @@
 import SwiftUI
 
-/// Menu bar app for the Soundcore R60i NC. The menu bar panel holds the controls used every day;
-/// everything else lives in Settings (⌘,).
+/// Menu bar app for the Soundcore R60i NC. Like AirPods in macOS, it only shows up while the
+/// earbuds are connected to this Mac: the menu bar icon appears when they connect and goes away
+/// when they disconnect. The panel holds the controls used every day; everything else lives in
+/// Settings (⌘,), which `AppDelegate` hosts so it can also open when the icon is hidden.
 @main
 struct R60iControlApp: App {
-    @State private var model = AppModel()
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
 
     var body: some Scene {
-        MenuBarExtra {
+        let model = appDelegate.model
+        MenuBarExtra(isInserted: .constant(model.showsMenuBarItem)) {
             MenuPanel()
                 .environment(model)
         } label: {
             MenuBarLabel(model: model)
         }
         .menuBarExtraStyle(.window)
-
-        Settings {
-            SettingsView()
-                .environment(model)
-        }
     }
 }

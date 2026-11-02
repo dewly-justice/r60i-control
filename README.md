@@ -9,9 +9,11 @@ macOS 27.
 - **Settings (⌘,):** noise control details, equalizer (22 presets plus custom 8-band), spatial
   audio, LDAC, touch controls per gesture per earbud, dual connection and its device list, auto
   power-off, touch tone, low-battery prompt, volume limit, device info.
-- **Behavior:** connects automatically when the earbuds connect to the Mac, reconnects after
-  drops and sleep, reads the earbuds' state on connect so the UI always matches them, and shows
-  clearly when they aren't connected. Optional global shortcut to cycle the sound mode.
+- **Behavior:** like AirPods in macOS, the app only shows up while the earbuds are connected to
+  the Mac. The menu bar icon appears when they connect and goes away when they disconnect, and
+  Settings shows the earbud panes only while they're connected. It connects automatically,
+  reconnects after drops and sleep, and reads the earbuds' state on connect so the UI always
+  matches them. Optional global shortcut to cycle the sound mode.
 
 Only settings whose packets are documented in [OpenSCQ30](https://github.com/Oppzippy/OpenSCQ30)
 are offered; see [`docs/protocol.md`](docs/protocol.md). Firmware updates and HearID are out of
@@ -41,9 +43,15 @@ Settings → General.
 ### First launch
 
 1. Pair the earbuds with the Mac in System Settings → Bluetooth (once).
-2. Open the app. It lives in the menu bar (no Dock icon) and asks for Bluetooth permission.
-   If you said no, enable it in System Settings → Privacy & Security → Bluetooth.
-3. Take the earbuds out of the case. The app connects in a few seconds.
+2. Open the app. It asks for Bluetooth permission; if you said no, enable it in System
+   Settings → Privacy & Security → Bluetooth. Until it has connected once, it opens Settings to
+   show what it's waiting for.
+3. Take the earbuds out of the case. The app connects in a few seconds and its icon appears in
+   the menu bar.
+
+The app has no Dock icon, and no menu bar icon while the earbuds are away. To reach Settings
+then (for example to change the shortcut or quit with ⌘Q), open the app again from Finder or
+Spotlight.
 
 ## Things to know
 
@@ -69,9 +77,9 @@ adding Normal to the long-press cycle. See
 
 | Symptom | Try |
 |---|---|
-| "No R60i NC Paired" | Pair the earbuds in System Settings → Bluetooth |
-| "Not Connected" | Take the buds out of the case and pick them as the Mac's audio device, or click Connect |
-| "Can't Reach the Earbuds" | Close the Soundcore app on your phone, then Try Again |
+| No menu bar icon | The earbuds aren't connected to this Mac. Open the app again to see their status in Settings, and click Connect there or pick them in the Bluetooth menu |
+| "Not paired with this Mac" | Pair the earbuds in System Settings → Bluetooth, and allow Bluetooth for the app in Privacy & Security |
+| "Couldn't connect" | Close the Soundcore app on your phone, then Try Again |
 | Nothing happens after granting Bluetooth permission | Quit and reopen the app |
 | See what the app sends | `log stream --info --debug --predicate 'subsystem == "dev.local.R60iControl"'` |
 

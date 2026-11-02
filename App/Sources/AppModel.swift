@@ -31,6 +31,19 @@ final class AppModel {
     }
     private(set) var shortcutError: String?
 
+    /// The menu bar icon is shown only while the earbuds are connected to this Mac, as macOS does
+    /// for AirPods. That includes the few seconds the control channel takes to open, and the case
+    /// where it can't open (the panel then says why).
+    var showsMenuBarItem: Bool { device.status.earbudsConnectedToMac }
+
+    /// Whether the app has ever connected to the earbuds (it remembers their address).
+    let hasConnectedBefore: Bool
+
+    /// Opens the Settings window; set by `AppDelegate`, which hosts it.
+    @ObservationIgnored var openSettingsHandler: () -> Void = {}
+
+    func openSettings() { openSettingsHandler() }
+
     /// The last custom EQ (8 bands, tenths of a dB). The earbuds forget custom values when a
     /// preset is chosen, so the app keeps them to restore "Custom".
     var customEqualizer: [Int] {
@@ -57,6 +70,7 @@ final class AppModel {
             ? savedEQ : Array(repeating: 0, count: EqualizerConfiguration.visibleBandCount)
 
         device.preferredAddress = defaults.string(forKey: Keys.deviceAddress)
+        hasConnectedBefore = device.preferredAddress != nil
         device.onEvent = { [log] event in
             switch event {
             case let .info(message): log.info("\(message, privacy: .public)")

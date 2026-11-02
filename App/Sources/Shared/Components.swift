@@ -105,91 +105,76 @@ struct ErrorBanner: View {
     }
 }
 
-/// What to show when there is no control connection, by status.
-struct ConnectionStatusView: View {
+/// Opens System Settings → Bluetooth.
+@MainActor
+func openBluetoothSettings() {
+    if let url = URL(string: "x-apple.systempreferences:com.apple.BluetoothSettings") {
+        NSWorkspace.shared.open(url)
+    }
+}
+
+/// The earbuds' row while they aren't connected, in the style of System Settings' Bluetooth
+/// device rows: icon, name, status, and the one action that helps, with guidance underneath.
+struct DeviceStatusSection: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         let device = model.device
-        VStack(spacing: 10) {
-            Image(systemName: symbol(device.status))
-                .font(.system(size: 30))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.secondary)
-                .symbolEffect(.pulse, isActive: device.status == .connecting)
-            Text(title(device.status))
-                .font(.headline)
-            Text(detail(device.status))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            actions(device)
+        Section {
+            HStack(spacing: 10) {
+                RoundIcon(symbol: "earbuds", isOn: false, size: 32)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(device.deviceName ?? "Soundcore R60i NC")
+                    Text(device.status.summary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                action(device)
+            }
+        } footer: {
+            Text(guidance(device.status))
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
     }
 
     @ViewBuilder
-    private func actions(_ device: SoundcoreDevice) -> some View {
+    private func action(_ device: SoundcoreDevice) -> some View {
         switch device.status {
+        case .idle, .connecting:
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel("Connecting")
         case .disconnected:
             Button("Connect") { device.requestBluetoothConnection() }
-                .buttonStyle(.glassProminent)
         case .unavailable:
             Button("Try Again") { device.retryNow() }
-                .buttonStyle(.glass)
         case .bluetoothOff, .notPaired:
-            Button("Open Bluetooth Settings") {
-                if let url = URL(string: "x-apple.systempreferences:com.apple.BluetoothSettings") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
-            .buttonStyle(.glass)
-        case .idle, .connecting, .connected:
+            Button("Bluetooth Settings…") { openBluetoothSettings() }
+        case .connected:
             EmptyView()
         }
     }
 
-    private func symbol(_ status: SoundcoreDevice.Status) -> String {
-        switch status {
-        case .bluetoothOff: "antenna.radiowaves.left.and.right.slash"
-        case .unavailable: "exclamationmark.triangle"
-        default: "earbuds"
-        }
-    }
-
-    private func title(_ status: SoundcoreDevice.Status) -> String {
-        let name = model.device.deviceName ?? "R60i NC"
-        return switch status {
-        case .idle, .connecting: "Connecting to \(name)…"
-        case .bluetoothOff: "Bluetooth Is Off"
-        case .notPaired: "No R60i NC Paired"
-        case .disconnected: "\(name) Not Connected"
-        case .unavailable: "Can't Reach the Earbuds"
-        case .connected: "Connected"
-        }
-    }
-
-    private func detail(_ status: SoundcoreDevice.Status) -> String {
+    private func guidance(_ status: SoundcoreDevice.Status) -> String {
         switch status {
         case .idle, .connecting:
             "Reading the earbuds' settings."
-        case .bluetoothOff:
-            "Turn on Bluetooth to control your earbuds."
-        case .notPaired:
-            "Pair your Soundcore R60i NC in Bluetooth settings first."
         case .disconnected:
-            "Take the earbuds out of the case. They connect automatically when this Mac is their audio device."
-        case let .unavailable(reason):
-            "\(reason)\nIf the Soundcore app is open on your phone, close it: the earbuds accept only one controller at a time."
+            "Earbud settings appear here, and in the menu bar, while the earbuds are connected to this Mac. Take them out of the case, or click Connect."
+        case .bluetoothOff:
+            "Turn on Bluetooth to use your earbuds with this Mac."
+        case .notPaired:
+            "Pair your Soundcore R60i NC with this Mac first. If it's paired, allow Bluetooth for R60i Control in Privacy & Security."
+        case .unavailable:
+            "The earbuds accept one controller at a time. Close the Soundcore app on your phone, then try again."
         case .connected:
             ""
         }
     }
 }
 
-/// Placeholder for device settings while there's no connection.
+/// Device settings, shown only while connected. Settings hides these tabs when the earbuds
+/// disconnect, so the placeholder only shows for a moment.
 struct RequiresConnection<Content: View>: View {
     @Environment(AppModel.self) private var model
     @ViewBuilder let content: (D1202State) -> Content
@@ -198,9 +183,7 @@ struct RequiresConnection<Content: View>: View {
         if let state = model.device.state, model.device.isConnected {
             content(state)
         } else {
-            ConnectionStatusView()
-                .padding(40)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ContentUnavailableView("Earbuds Not Connected", systemImage: "earbuds")
         }
     }
 }

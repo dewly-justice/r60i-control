@@ -6,9 +6,12 @@ import SwiftUI
 /// AirPods): a header, small bold section titles, full-width rows with round icons that fill with
 /// the accent color when selected, hover highlights, and the selected mode's options expanding
 /// right under it.
+///
+/// The panel only exists while the earbuds are connected to this Mac (the menu bar icon is
+/// hidden otherwise), so besides the controls it only has to cover the moment the control
+/// channel opens and the case where it can't.
 struct MenuPanel: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -42,17 +45,14 @@ struct MenuPanel: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
-            } else {
-                ConnectionStatusView()
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 8)
+            } else if case .unavailable(let reason) = model.device.status {
+                UnavailableNotice(reason: reason)
             }
 
             PanelDivider()
             VStack(spacing: 0) {
                 MenuRow(title: "Earbud Settings…") {
-                    NSApp.activate()
-                    openSettings()
+                    model.openSettings()
                 }
                 .keyboardShortcut(",", modifiers: .command)
                 MenuRow(title: "Quit R60i Control") {
@@ -86,18 +86,46 @@ private struct PanelHeader: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            if model.device.pendingWrites > 0 {
+            if busy {
                 ProgressView()
                     .controlSize(.small)
-                    .accessibilityLabel("Applying")
+                    .accessibilityLabel(model.device.isConnected ? "Applying" : "Connecting")
             }
         }
     }
 
+    private var busy: Bool {
+        switch model.device.status {
+        case .idle, .connecting: true
+        default: model.device.pendingWrites > 0
+        }
+    }
+
     private var subtitle: String {
-        guard let state = model.device.state, model.device.isConnected else { return "Not connected" }
+        guard let state = model.device.state, model.device.isConnected else { return model.device.status.summary }
         if state.tws.isConnected { return "Connected" }
         return "\(state.tws.hostDeviceRaw == 0 ? "Left" : "Right") earbud only"
+    }
+}
+
+/// Why the control channel didn't open, and a way to retry. Text lines up with the header title.
+private struct UnavailableNotice: View {
+    @Environment(AppModel.self) private var model
+    let reason: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("The earbuds accept one controller at a time. If the Soundcore app is open on your phone, close it.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(reason)
+                .padding(.leading, 14 + 30 + 10)
+                .padding(.trailing, 14)
+                .padding(.bottom, 6)
+            MenuRow(title: "Try Again") { model.device.retryNow() }
+                .padding(.horizontal, 5)
+        }
     }
 }
 

@@ -12,9 +12,7 @@ struct GeneralTab: View {
             if let state = model.device.state, model.device.isConnected {
                 earbudSections(state)
             } else {
-                Section("Earbuds") {
-                    ConnectionStatusView()
-                }
+                DeviceStatusSection()
             }
 
             Section("App") {
