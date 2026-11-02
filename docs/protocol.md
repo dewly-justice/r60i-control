@@ -603,8 +603,9 @@ This is the complete list, so it is the upper limit of what the app can offer:
 - Sound-modes byte 5: meaning unknown. OpenSCQ30 always writes `0`, and we'll do the same.
 - The 2 extra bytes in `01 03` (battery) pushes: meaning unknown.
 - `0B 02` push, body `[00|01] + 6 bytes`, e.g. `00 17 D3 6E A6 9B 5C` then `01 17 D3 6E A6 9B 5C`
-  (seen twice in 2 minutes with dual connection on). The 6 bytes look like a MAC in wire order
-  (§6.8), so it's probably a dual-connection device dropping and coming back. Not handled yet.
+  (seen twice in 2 minutes with dual connection on). The 6 bytes are this Mac's address in wire
+  order (§6.8: `5C:9B:A6:6E:D3:17`), so it's probably a dual-connection status change for the
+  Mac (`00` then `01`). Not handled yet.
 - HearID: we only echo the values back unchanged. We won't build HearID features. On a real
   R60i NC that has never run HearID, these bytes are `FF` and the type byte (86) is `FF`,
   outside OpenSCQ30's enum. Check how `03 87` (§7.3) handles that before Phase 2 sends any EQ write.
