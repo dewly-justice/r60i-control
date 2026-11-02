@@ -113,6 +113,7 @@ func apply(_ setting: Setting, to device: SoundcoreDevice, current: D1202State) 
         try await device.setSpatialAudio(enabled: mode != nil, mode: mode ?? current.spatialAudio.mode ?? .music)
     case let .button(side, kind, action): try await device.setButtonAction(action, side: side, kind: kind)
     case .resetButtons: try await device.resetButtons()
+    case let .soundModeCycle(modes): try await device.setSoundModeCycle(modes)
     case let .dualConnections(enabled): try await device.setDualConnections(enabled)
     case let .autoPowerOff(duration):
         try await device.setAutoPowerOff(enabled: duration != nil, duration: duration ?? current.autoPowerOff.duration ?? .thirtyMinutes)
@@ -158,6 +159,9 @@ enum Verify {
             let gesture = ButtonGesture(side: side, kind: kind)
             let nibble = state.buttons.currentNibble(gesture, budsLinked: state.tws.isConnected)
             return check(nibble == (action?.rawValue ?? ButtonAction.disabledNibble), "\(gesture.displayName) is \(ButtonAction.describe(nibble: nibble))")
+        case let .soundModeCycle(modes):
+            let cycle = state.soundModeCycles.current(budsLinked: state.tws.isConnected)
+            return check(Set(cycle.modes) == modes, "cycle is \(cycle.modes.map(\.displayName)) (raw \([state.soundModeCycles.raw].hexString))")
         case let .dualConnections(enabled): return check(state.dualConnections == enabled, "dual connection is \(state.dualConnections)")
         case let .autoPowerOff(duration):
             return duration == nil

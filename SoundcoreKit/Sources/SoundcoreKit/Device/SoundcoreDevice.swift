@@ -466,6 +466,30 @@ public final class SoundcoreDevice {
         }
     }
 
+    /// Sets which modes "Switch Sound Mode" cycles through, for the situation that applies now
+    /// (two-earbud or one-earbud, like the buttons). At least two modes. The state is re-read
+    /// afterwards to confirm the earbuds stored it.
+    public func setSoundModeCycle(_ modes: Set<AmbientSoundMode>) async throws(SoundcoreError) {
+        let state = try currentState()
+        let linked = state.tws.isConnected
+        var cycle = state.soundModeCycles.current(budsLinked: linked)
+        for mode in AmbientSoundMode.allCases {
+            cycle = cycle.setting(mode, included: modes.contains(mode))
+        }
+        let updated = state.soundModeCycles.replacing(cycle, budsLinked: linked)
+        guard updated != state.soundModeCycles else { return }
+        let frame: Frame
+        do {
+            frame = try Requests.setSoundModeCycles(updated)
+        } catch {
+            throw .encode(error)
+        }
+        try await perform(frame, refreshAfter: true) { $0.soundModeCycles = updated }
+        if self.state?.soundModeCycles != updated {
+            throw .notApplied("The earbuds kept their previous sound-mode cycle.")
+        }
+    }
+
     public func resetButtons() async throws(SoundcoreError) {
         try await perform(Requests.resetButtons(), refreshAfter: true) { _ in }
     }

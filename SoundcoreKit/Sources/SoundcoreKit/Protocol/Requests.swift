@@ -38,6 +38,15 @@ public enum Requests {
         Frame(.hostToDevice, .setButtonAction, body: [gesture.side.rawValue, gesture.kind.buttonID, actionByte])
     }
 
+    /// `06 82 [cycles]`: one byte, high nibble one-earbud cycle, low nibble two-earbud cycle
+    /// (SoundModeCycle.swift). Each cycle needs at least two modes.
+    public static func setSoundModeCycles(_ cycles: SoundModeCycles) throws(EncodeError) -> Frame {
+        for cycle in [cycles.twoEarbuds, cycles.oneEarbud] where cycle.modes.count < 2 {
+            throw .outOfRange("sound-mode cycle \(cycle.modes) (needs at least two modes)")
+        }
+        return Frame(.hostToDevice, .setSoundModeCycle, body: [cycles.raw])
+    }
+
     /// `04 82`, empty body. Afterwards, request the state again (§7.2).
     public static func resetButtons() -> Frame {
         Frame(.hostToDevice, .resetButtons)

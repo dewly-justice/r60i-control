@@ -21,7 +21,8 @@ public enum D1202StateLayout {
     public static let hearID = 0x3D // 48
     public static let unknown6D = 0x6D
     public static let buttons = 0x6E // 8
-    public static let unknown76 = 0x76
+    /// OpenSCQ30's D1202 module skips it; see SoundModeCycle.swift.
+    public static let soundModeCycle = 0x76
     public static let soundModes = 0x77 // 8
     public static let unknown7F = 0x7F
     public static let touchTone = 0x80
@@ -50,6 +51,8 @@ public struct D1202State: Hashable, Sendable {
     /// HearID block, 48 bytes from offset 0x3D. Only echoed back in EQ writes.
     public var hearID: HearIDBlock
     public var buttons: ButtonConfiguration
+    /// Which modes "Switch Sound Mode" cycles through.
+    public var soundModeCycles: SoundModeCycles
     public var soundModes: SoundModes
     public var touchTone: Bool
     public var lowBatteryPrompt: Bool
@@ -78,6 +81,7 @@ public struct D1202State: Hashable, Sendable {
         equalizer = EqualizerConfiguration(raw: slice(L.equalizer, 22))
         hearID = HearIDBlock(raw: slice(L.hearID, HearIDBlock.byteCount))
         buttons = ButtonConfiguration(raw: slice(L.buttons, 8))
+        soundModeCycles = SoundModeCycles(raw: body[L.soundModeCycle])
         soundModes = try SoundModes(bytes: slice(L.soundModes, SoundModes.byteCount))
         touchTone = flag(L.touchTone)
         lowBatteryPrompt = flag(L.lowBatteryPrompt)

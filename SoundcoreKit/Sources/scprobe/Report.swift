@@ -57,6 +57,10 @@ enum Report {
             let solo = ButtonAction.describe(nibble: state.buttons.soloNibble(gesture))
             row(gesture.displayName, linked.padding(toLength: 20, withPad: " ", startingAt: 0) + solo)
         }
+        let cycles = state.soundModeCycles
+        func names(_ cycle: SoundModeCycle) -> String { cycle.modes.map(\.displayName).joined(separator: " → ") }
+        row("Mode cycle, both", "\(names(cycles.twoEarbuds))  (raw \([cycles.raw].hexString))")
+        row("Mode cycle, single", names(cycles.oneEarbud))
         out.append("")
 
         // Other

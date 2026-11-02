@@ -30,6 +30,8 @@ struct ControlsTab: View {
                         : "You're wearing one earbud, so these are the one-earbud controls. Wear both to edit the two-earbud controls.")
                 }
 
+                SoundModeCycleSection(state: state)
+
                 Section {
                     LabeledContent {
                         Button("Reset…") { confirmingReset = true }
@@ -84,5 +86,42 @@ struct ControlsTab: View {
             }
         }
         .accessibilityLabel("\(side.displayName) \(kind.title)")
+    }
+}
+
+/// Which modes "Switch Sound Mode" steps through, like "Noise control switches between" for
+/// AirPods. The earbuds keep one cycle for two earbuds and one for a single earbud; this edits
+/// the one that applies now, as the touch controls do.
+private struct SoundModeCycleSection: View {
+    @Environment(AppModel.self) private var model
+    let state: D1202State
+
+    var body: some View {
+        let linked = state.tws.isConnected
+        let cycle = state.soundModeCycles.current(budsLinked: linked)
+        Section {
+            ForEach([AmbientSoundMode.noiseCanceling, .transparency, .normal]) { mode in
+                let included = cycle.contains(mode)
+                Toggle(isOn: Binding(
+                    get: { included },
+                    set: { include in
+                        var modes = Set(cycle.modes)
+                        if include { modes.insert(mode) } else { modes.remove(mode) }
+                        model.perform { try await $0.setSoundModeCycle(modes) }
+                    }
+                )) {
+                    Label(mode.title, systemImage: mode.symbol)
+                }
+                .toggleStyle(.checkbox)
+                // A cycle needs at least two modes.
+                .disabled(included && cycle.modes.count <= 2)
+            }
+        } header: {
+            Text("Switch Sound Mode Cycles Through")
+        } footer: {
+            Text(linked
+                ? "For gestures set to Switch Sound Mode, while you wear both earbuds. Choose at least two."
+                : "For gestures set to Switch Sound Mode, while you wear one earbud. Choose at least two.")
+        }
     }
 }

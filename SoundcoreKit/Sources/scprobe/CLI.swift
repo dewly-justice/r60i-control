@@ -15,6 +15,8 @@ enum Setting: Equatable {
     case spatial(SpatialAudioMode?)
     case button(EarbudSide, GestureKind, ButtonAction?)
     case resetButtons
+    /// The modes "Switch Sound Mode" cycles through now (two- or one-earbud cycle).
+    case soundModeCycle(Set<AmbientSoundMode>)
     case dualConnections(Bool)
     /// nil = off
     case autoPowerOff(AutoPowerOffDuration?)
@@ -66,6 +68,7 @@ enum CLI {
       button left|right single|double|triple|long <action>
             action: volume-up volume-down previous next sound-mode voice-assistant play-pause none
       buttons-reset                         dual on|off
+      cycle <modes, comma-separated>        modes press-and-hold cycles through: anc,transparency,normal
       auto-off off|10|20|30|60              touch-tone on|off
       low-battery-prompt on|off             ldac on|off
       volume-limit off|75|80|85|90|95|100   db-refresh realtime|10s|1min
@@ -241,6 +244,18 @@ enum CLI {
         case "buttons-reset":
             _ = try value(0)
             return .resetButtons
+        case "cycle":
+            var modes = Set<AmbientSoundMode>()
+            for name in try value()[0].split(separator: ",") {
+                switch name {
+                case "anc", "noise-canceling": modes.insert(.noiseCanceling)
+                case "transparency": modes.insert(.transparency)
+                case "normal": modes.insert(.normal)
+                default: throw .usage("cycle: unknown mode \(name) (anc, transparency, normal)")
+                }
+            }
+            guard modes.count >= 2 else { throw .usage("cycle: needs at least two modes") }
+            return .soundModeCycle(modes)
         case "dual":
             return .dualConnections(try onOff())
         case "auto-off":

@@ -45,6 +45,7 @@ extension Command {
     // Host → device writes used by the D1202 module, docs/protocol.md §7.2.
     // Never add a command here without a cited byte layout in that table.
     public static let setSoundModes = Command(0x06, 0x81)
+    public static let setSoundModeCycle = Command(0x06, 0x82)
     public static let setEqualizer = Command(0x03, 0x87)
     public static let setSpatialAudio = Command(0x10, 0x81)
     public static let setButtonAction = Command(0x04, 0x81)
@@ -72,6 +73,7 @@ extension Command {
         case .soundModes: "sound modes"
         case .dualConnectionDevices: "dual-connection devices"
         case .setSoundModes: "set sound modes"
+        case .setSoundModeCycle: "set sound-mode cycle"
         case .setEqualizer: "set equalizer"
         case .setSpatialAudio: "set spatial audio"
         case .setButtonAction: "set button action"

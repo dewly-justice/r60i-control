@@ -7,7 +7,8 @@ macOS 27.
 - **Menu bar:** battery for left, right and case; Noise Cancelling / Normal / Transparency;
   adaptive ANC; manual ANC strength; scene and transparency options; wind noise reduction.
 - **Settings (⌘,):** noise control details, equalizer (22 presets plus custom 8-band), spatial
-  audio, LDAC, touch controls per gesture per earbud, dual connection and its device list, auto
+  audio, LDAC, touch controls per gesture per earbud, which modes Switch Sound Mode cycles
+  through, dual connection and its device list, auto
   power-off, touch tone, low-battery prompt, volume limit, device info.
 - **Behavior:** like AirPods in macOS, the app only shows up while the earbuds are connected to
   the Mac. The menu bar icon appears when they connect and goes away when they disconnect, and
@@ -69,8 +70,8 @@ Spotlight.
   "LDAC on" but keep it off, the app says so instead of pretending it worked.
 
 **Not supported**, because no packet for it is documented for this model:
-Fit Test, the HearID hearing test, the AI assistant and AI Translation, firmware updates, and
-adding Normal to the long-press cycle. See
+Fit Test, the HearID hearing test, the AI assistant and AI Translation, and firmware updates.
+The earbuds have no swipe or head gestures. See
 [`docs/research/r60i-nc-features.md`](docs/research/r60i-nc-features.md).
 
 ## Troubleshooting

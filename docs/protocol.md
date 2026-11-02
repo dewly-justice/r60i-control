@@ -217,7 +217,7 @@ Offsets were checked by decoding the real-device fixture in the `sc/d1202.rs` te
 | 115 | 0x73 | 1 | Button: Right triple press | `FF` |
 | 116 | 0x74 | 1 | Button: Left long press | `44` → AmbientSoundMode |
 | 117 | 0x75 | 1 | Button: Right long press | `44` → AmbientSoundMode |
-| 118 | 0x76 | 1 | unknown | `33` |
+| 118 | 0x76 | 1 | Sound-mode cycle (§6.10). OpenSCQ30's D1202 module skips it as unknown | `33` |
 | 119 | 0x77 | 8 | **Sound modes block** (§6.2) | `00 50 00 02 00 00 00 00` |
 | 127 | 0x7F | 1 | unknown | `32` |
 | 128 | 0x80 | 1 | Touch tone — bool | `01` |
@@ -340,6 +340,31 @@ Body: exactly 1 byte, a bool. Source: `sc/common/modules/flag.rs` (`Ldac` flag,
 > tone, low battery prompt or spatial audio. Those values only refresh from a full `01 01`
 > state packet.
 
+### 6.10 Sound-mode cycle (state offset 0x76) — not in OpenSCQ30's D1202 module
+
+Which modes the "Switch Sound Mode" button action (press and hold, by default) steps through.
+Soundcore documents the setting for the R60i NC: "You can add Normal mode via the Anker
+soundcore app" (support article "How do I switch between ANC and Transparency Mode via touch
+control on my P31i/R60i NC?"; `docs/research/r60i-nc-features.md`).
+
+OpenSCQ30 skips this byte for D1202 (`take(1usize)` before the sound modes in
+`sc/d1202/packets/inbound/state_update.rs:87`). We read it with the layout OpenSCQ30 uses for
+the **A3968**, whose state packet matches D1202's field for field up to the sound-modes block
+and has `AmbientSoundModeCycleTws` in this exact slot (`sc/a3968/packets/inbound/state_update.rs:92-96`):
+
+| Bits | Meaning (`sc/common/structures/ambient_sound_mode_cycle.rs`) |
+|---|---|
+| low nibble | cycle while both earbuds are connected (`tws_enabled`) |
+| high nibble | cycle while only one is (`tws_disabled`) |
+| bit 0 / 1 / 2 of a nibble | Noise Cancelling / Transparency / Normal is in the cycle |
+| bit 3 | not defined; we send it back as read |
+
+Our R60i NC reports `33`: Noise Cancelling ↔ Transparency in both situations, which is the
+documented default ("press and hold for 2 s: ANC ↔ Transparency", manual CONTROLS). The OpenSCQ30
+D1202 fixture has `33` too. Written with `06 82` (§7.2). Like the buttons, the app edits the
+nibble for the current TWS state, as OpenSCQ30's `ambient_sound_mode_cycle_tws/setting_handler.rs`
+does, and refuses a cycle with fewer than two modes.
+
 ---
 
 ## 7. Host → device packets
@@ -380,6 +405,7 @@ We will use only `01 01` and `0B 01`. The other reads are confirmed but not need
 | `01 83` | Set touch tone | `[bool]` | `sc/common/packet/outbound.rs` (`SET_TOUCH_TONE_COMMAND`), `sc/common/modules/flag/state_modifier.rs` |
 | `10 82` | Set low-battery prompt | `[bool]` | `SET_LOW_BATTERY_PROMPT_COMMAND`, same |
 | `01 FF` | Set LDAC | `[bool]` | `sc/common/modules/flag.rs` (`Ldac`) |
+| `06 82` | Set sound-mode cycle (§6.10). **Not used by OpenSCQ30's D1202 module.** | `[cycle byte]`: high nibble one-earbud cycle, low nibble two-earbud cycle | `set_ambient_sound_mode_cycle_tws`, `sc/common/packet/outbound/set_ambient_sound_mode_cycle.rs:24`, as the A3968 uses it (`sc/common/modules/ambient_sound_mode_cycle_tws/state_modifier.rs`). Verified on hardware: §7.5 |
 
 > ⚠️ **Same command, different layout.** OpenSCQ30's common code also uses `06 81`
 > (`sc/common/packet/outbound/set_sound_modes.rs`, a **4-byte** body for other models) and
@@ -389,7 +415,7 @@ We will use only `01 01` and `0B 01`. The other reads are confirmed but not need
 
 **Not for D1202.** These are defined in OpenSCQ30's common code, but the D1202 module doesn't
 use them, so we will **not** send them: `04 83` (button enabled flag), `04 84` (set all
-buttons), `06 82` (ambient-mode cycle), `01 87` gaming mode, `01 81` auto play/pause &
+buttons), `01 87` gaming mode, `01 81` auto play/pause &
 wearing detection, `01 8C` wearing tone, `04 86` touch lock, `10 86` sound-leak compensation,
 `02 86` surround, `01 90` voice prompt, `10 94` disable all buttons, `02 81` / `02 83` /
 `03 86` (other EQ variants).
@@ -459,6 +485,7 @@ setting restored. Every one was acknowledged with an empty-body frame, as §3 de
 | `0B 84` dual connection off → on | applied and restored |
 | `0B 01` device list | 2 records, MAC bytes reversed (§6.8) |
 | `01 FF` LDAC on | **acknowledged but not applied**: offset 0x82 stayed `00`, no `01 7F` push. Same result with dual connection off. Spatial audio was **on** during both tries, and Soundcore's FAQ says LDAC and spatial audio exclude each other (see the research doc). A later try from the app, one second after spatial audio was turned off (both buds in, iPhone also connected), also left LDAC off. That fits Soundcore's "LDAC is only available on Android devices" |
+| `06 82` sound-mode cycle `33` → `37` (both buds linked, 15:30) | acknowledged; offset 0x76 read back `37`, also after reconnecting. Pressing and holding then stepped Normal → Noise Cancelling → Transparency → Normal (`06 01` pushes), so Normal really was in the cycle. Restored to `33` |
 | `04 82` reset buttons, `0B 81/82/83` | not tested on hardware. Reset can't be undone while TWS is unlinked (only one nibble is writable), and forget can't be undone at all |
 
 Restoring the EQ needed one extra write. Every OpenSCQ30 preset sets hidden band 10 to −12 dB
@@ -571,10 +598,13 @@ This is the complete list, so it is the upper limit of what the app can offer:
 
 ## 10. Unknowns and open questions
 
-- State bytes at 0x20 (5 bytes), 0x3C, 0x6D, 0x76 and 0x7F, plus anything from 0x8B on:
+- State bytes at 0x20 (5 bytes), 0x3C, 0x6D and 0x7F, plus anything from 0x8B on:
   meaning unknown. We parse them, keep them, and never write them.
 - Sound-modes byte 5: meaning unknown. OpenSCQ30 always writes `0`, and we'll do the same.
 - The 2 extra bytes in `01 03` (battery) pushes: meaning unknown.
+- `0B 02` push, body `[00|01] + 6 bytes`, e.g. `00 17 D3 6E A6 9B 5C` then `01 17 D3 6E A6 9B 5C`
+  (seen twice in 2 minutes with dual connection on). The 6 bytes look like a MAC in wire order
+  (§6.8), so it's probably a dual-connection device dropping and coming back. Not handled yet.
 - HearID: we only echo the values back unchanged. We won't build HearID features. On a real
   R60i NC that has never run HearID, these bytes are `FF` and the type byte (86) is `FF`,
   outside OpenSCQ30's enum. Check how `03 87` (§7.3) handles that before Phase 2 sends any EQ write.
@@ -631,7 +661,8 @@ Rules every write follows:
   unknown.
 - EQ writes need both buds linked (as in OpenSCQ30) and send the HearID block back as reported
   (§7.3).
-- Button writes change only the nibble for the current TWS state (§8.7).
+- Button writes change only the nibble for the current TWS state (§8.7). So do sound-mode
+  cycle writes (§6.10), which also re-read the state to confirm the earbuds stored them.
 - If the earbuds don't acknowledge a write (3 attempts, §3), the cached state is rolled back and
   re-read.
 - The connection only ever uses the vendor service (§1), never the Serial Port or OTA channels.
