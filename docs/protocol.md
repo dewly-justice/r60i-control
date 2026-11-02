@@ -458,7 +458,7 @@ setting restored. Every one was acknowledged with an empty-body frame, as §3 de
 | `20 82` volume limit 85 dB on → 90 dB off, `20 81` refresh rate | applied and restored |
 | `0B 84` dual connection off → on | applied and restored |
 | `0B 01` device list | 2 records, MAC bytes reversed (§6.8) |
-| `01 FF` LDAC on | **acknowledged but not applied**: offset 0x82 stayed `00`, no `01 7F` push. Same result with dual connection off. Spatial audio was **on** during both tries, and Soundcore's FAQ says LDAC and spatial audio exclude each other (see the research doc). With spatial audio off: not tested |
+| `01 FF` LDAC on | **acknowledged but not applied**: offset 0x82 stayed `00`, no `01 7F` push. Same result with dual connection off. Spatial audio was **on** during both tries, and Soundcore's FAQ says LDAC and spatial audio exclude each other (see the research doc). A later try from the app, one second after spatial audio was turned off (both buds in, iPhone also connected), also left LDAC off. That fits Soundcore's "LDAC is only available on Android devices" |
 | `04 82` reset buttons, `0B 81/82/83` | not tested on hardware. Reset can't be undone while TWS is unlinked (only one nibble is writable), and forget can't be undone at all |
 
 Restoring the EQ needed one extra write. Every OpenSCQ30 preset sets hidden band 10 to −12 dB
@@ -579,9 +579,10 @@ This is the complete list, so it is the upper limit of what the app can offer:
   R60i NC that has never run HearID, these bytes are `FF` and the type byte (86) is `FF`,
   outside OpenSCQ30's enum. Check how `03 87` (§7.3) handles that before Phase 2 sends any EQ write.
 - Spatial audio: confirmed on the R60i NC (Music/Movie on and off all apply, §7.5).
-- LDAC: the R60i NC acknowledged `01 FF [01]` but kept LDAC off, with spatial audio on.
-  Soundcore documents that LDAC and spatial audio exclude each other, that LDAC is Android-only,
-  and that switching codecs takes about 10 s. Not yet tried with spatial audio off.
+- LDAC: the R60i NC acknowledged `01 FF [01]` but kept LDAC off, with spatial audio on and
+  again with it off (no Android source connected). Soundcore documents that LDAC and spatial
+  audio exclude each other, that LDAC is Android-only, and that switching codecs takes about
+  10 s. Untested with an Android phone connected.
 - Adaptive ANC nibble: the R60i NC reports values outside OpenSCQ30's `0…2` names (`5`, `3`),
   changing on its own. It looks like a live level. It is read-only either way (§6.2).
 - State offset `0x8B`: flips between `00` and `01` on its own. Meaning unknown.
