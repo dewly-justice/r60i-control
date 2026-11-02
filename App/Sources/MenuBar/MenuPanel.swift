@@ -2,50 +2,90 @@ import AppKit
 import SoundcoreKit
 import SwiftUI
 
-/// The menu bar panel: battery, sound mode, and the ANC options changed several times a day.
+/// The menu bar panel, built like the system's own menu bar panels (Wi-Fi, Bluetooth, Sound with
+/// AirPods): a header, small bold section titles, full-width rows with round icons that fill with
+/// the accent color when selected, hover highlights, and the selected mode's options expanding
+/// right under it.
 struct MenuPanel: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
+        VStack(alignment: .leading, spacing: 0) {
+            PanelHeader()
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
 
             if let error = model.error {
                 ErrorBanner(message: error.message) { model.dismissError() }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 8)
             }
 
             if let state = model.device.state, model.device.isConnected {
                 BatteryRow(state: state)
-                Divider()
-                SoundModeSection(state: state)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 6)
+                PanelDivider()
+                NoiseControlSection(state: state)
+                PanelDivider()
+                SwitchRow(title: "Wind Noise Reduction", isOn: model.binding({ $0.soundModes.windNoiseSuppression }, default: false) {
+                    try await $0.setWindNoiseSuppression($1)
+                }) {
+                    if state.soundModes.windDetected {
+                        Image(systemName: "wind")
+                            .foregroundStyle(.secondary)
+                            .help("Wind detected")
+                            .accessibilityLabel("Wind detected")
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
             } else {
                 ConnectionStatusView()
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 8)
             }
 
-            Divider()
-            footer
+            PanelDivider()
+            VStack(spacing: 0) {
+                MenuRow(title: "Earbud Settings…") {
+                    NSApp.activate()
+                    openSettings()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+                MenuRow(title: "Quit R60i Control") {
+                    NSApp.terminate(nil)
+                }
+                .keyboardShortcut("q", modifiers: .command)
+            }
+            .padding(.horizontal, 5)
+            .padding(.bottom, 5)
         }
-        .padding(14)
-        .frame(width: 320)
+        .frame(width: 300)
         // Case battery has no push (docs/protocol.md §6.9), so refresh when the panel opens.
         .task { await model.device.refreshIfStale(olderThan: .seconds(10)) }
     }
+}
 
-    private var header: some View {
+// MARK: - Header and battery
+
+private struct PanelHeader: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "earbuds")
-                .font(.title2)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.tint)
+            RoundIcon(symbol: "earbuds", isOn: model.device.isConnected, size: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text(model.device.deviceName ?? "Soundcore R60i NC")
                     .font(.headline)
+                    .lineLimit(1)
                 Text(subtitle)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
+            Spacer(minLength: 0)
             if model.device.pendingWrites > 0 {
                 ProgressView()
                     .controlSize(.small)
@@ -57,167 +97,235 @@ struct MenuPanel: View {
     private var subtitle: String {
         guard let state = model.device.state, model.device.isConnected else { return "Not connected" }
         if state.tws.isConnected { return "Connected" }
-        return "Connected · \(state.tws.hostDeviceRaw == 0 ? "left" : "right") earbud only"
-    }
-
-    private var footer: some View {
-        VStack(spacing: 2) {
-            MenuRow(title: "Settings…", shortcut: "⌘,") {
-                NSApp.activate()
-                openSettings()
-            }
-            .keyboardShortcut(",", modifiers: .command)
-            MenuRow(title: "Quit R60i Control", shortcut: "⌘Q") {
-                NSApp.terminate(nil)
-            }
-            .keyboardShortcut("q", modifiers: .command)
-        }
+        return "\(state.tws.hostDeviceRaw == 0 ? "Left" : "Right") earbud only"
     }
 }
 
-/// Sound mode switcher plus the options for the selected mode.
-struct SoundModeSection: View {
+// MARK: - Noise control
+
+/// "Noise Control": one row per mode. The selected mode shows its options underneath.
+private struct NoiseControlSection: View {
+    /// Where row titles start, relative to the section: row padding + icon + spacing.
+    static let titleInset: CGFloat = 9 + RoundIcon.rowSize + 9
+
     @Environment(AppModel.self) private var model
     let state: D1202State
-    /// The manual level while the slider is being dragged; written on release.
-    @State private var levelDraft: Double?
 
     var body: some View {
         let modes = state.soundModes
-        VStack(alignment: .leading, spacing: 12) {
-            ModeSwitcher(selected: modes.ambient) { mode in
-                model.perform { try await $0.setAmbientMode(mode) }
-            }
-
-            switch modes.ambient {
-            case .noiseCanceling?:
-                noiseCancelingOptions(modes)
-            case .transparency?:
-                Picker("Transparency", selection: model.binding({ $0.soundModes.transparency ?? .fullyTransparent }, default: .fullyTransparent) {
-                    try await $0.setTransparencyMode($1)
-                }) {
-                    ForEach(TransparencyMode.allCases) { Text($0.title).tag($0) }
+        VStack(alignment: .leading, spacing: 0) {
+            SectionTitle("Noise Control")
+            ForEach(AmbientSoundMode.menuOrder) { mode in
+                let selected = modes.ambient == mode
+                IconRow(title: mode.title, symbol: mode.symbol, isOn: selected) {
+                    model.perform { try await $0.setAmbientMode(mode) }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            default:
-                EmptyView()
-            }
-
-            SwitchRow(title: "Wind Noise Reduction", symbol: "wind", isOn: model.binding({ $0.soundModes.windNoiseSuppression }, default: false) {
-                try await $0.setWindNoiseSuppression($1)
-            }) {
-                if modes.windDetected {
-                    Text("Wind detected")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+                if selected {
+                    options(for: mode, modes: modes)
+                        // Option text lines up with the mode titles; checkmarks hang in the gutter.
+                        .padding(.leading, mode == .transparency ? Self.titleInset - CheckRow.textInset : Self.titleInset)
+                        .padding(.trailing, 14)
+                        .padding(.bottom, 4)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
         }
-        .animation(.snappy, value: modes.raw)
+        .padding(.horizontal, 5)
+        .padding(.bottom, 4)
+        .animation(.snappy(duration: 0.25), value: modes.raw)
     }
 
     @ViewBuilder
-    private func noiseCancelingOptions(_ modes: SoundModes) -> some View {
-        SwitchRow(title: "Adaptive ANC", symbol: "sparkles", isOn: Binding(
-            get: { modes.noiseCancelingMode == .adaptive },
-            set: { adaptive in model.perform { try await $0.setNoiseCancelingMode(adaptive ? .adaptive : .manual) } }
-        ))
-
-        switch modes.noiseCancelingMode {
-        case .manual?:
-            HStack(spacing: 10) {
-                Text("Strength")
-                    .foregroundStyle(.secondary)
-                Slider(
-                    value: Binding(get: { levelDraft ?? Double(modes.manualLevel) }, set: { levelDraft = $0 }),
-                    in: 1...5,
-                    step: 1
-                ) { editing in
-                    guard !editing, let draft = levelDraft else { return }
-                    model.perform { try await $0.setManualNoiseCancelingLevel(Int(draft)) }
-                    levelDraft = nil
+    private func options(for mode: AmbientSoundMode, modes: SoundModes) -> some View {
+        switch mode {
+        case .noiseCanceling:
+            NoiseCancelingOptions(modes: modes)
+        case .transparency:
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(TransparencyMode.allCases) { option in
+                    CheckRow(title: option.title, isChecked: modes.transparency == option) {
+                        model.perform { try await $0.setTransparencyMode(option) }
+                    }
                 }
-                .accessibilityLabel("Noise cancelling strength")
-                Text("\(Int(levelDraft ?? Double(modes.manualLevel)))")
-                    .monospacedDigit()
-                    .frame(width: 14, alignment: .trailing)
             }
-            .font(.callout)
-        case .multiScene?:
-            Picker("Scene", selection: model.binding({ $0.soundModes.multiScene ?? .transport }, default: .transport) {
-                try await $0.setMultiScene($1)
-            }) {
-                ForEach(MultiSceneMode.allCases) { Label($0.title, systemImage: $0.symbol).tag($0) }
-            }
-            .pickerStyle(.segmented)
-        default:
+        case .normal:
             EmptyView()
         }
     }
 }
 
-/// Three round buttons, like Control Center: Noise Cancelling · Normal · Transparency.
-struct ModeSwitcher: View {
-    let selected: AmbientSoundMode?
-    let select: (AmbientSoundMode) -> Void
+private struct NoiseCancelingOptions: View {
+    @Environment(AppModel.self) private var model
+    let modes: SoundModes
+    /// The manual level while the slider is being dragged; written on release.
+    @State private var levelDraft: Double?
 
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(AmbientSoundMode.menuOrder) { mode in
-                let isSelected = mode == selected
-                Button {
-                    select(mode)
-                } label: {
-                    VStack(spacing: 6) {
-                        Image(systemName: mode.symbol)
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
-                            .frame(width: 44, height: 44)
-                            .background(
-                                Circle().fill(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
-                            )
-                        Text(mode.title)
-                            .font(.caption)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .foregroundStyle(isSelected ? .primary : .secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            SwitchRow(title: "Adaptive", isOn: Binding(
+                get: { modes.noiseCancelingMode == .adaptive },
+                set: { adaptive in model.perform { try await $0.setNoiseCancelingMode(adaptive ? .adaptive : .manual) } }
+            ))
+
+            switch modes.noiseCancelingMode {
+            case .manual?:
+                HStack(spacing: 8) {
+                    Image(systemName: "speaker.wave.1")
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: Binding(get: { levelDraft ?? Double(modes.manualLevel) }, set: { levelDraft = $0 }),
+                        in: 1...5,
+                        step: 1
+                    ) { editing in
+                        guard !editing, let draft = levelDraft else { return }
+                        model.perform { try await $0.setManualNoiseCancelingLevel(Int(draft)) }
+                        levelDraft = nil
                     }
-                    .frame(maxWidth: .infinity)
-                    .contentShape(.rect)
+                    .controlSize(.small)
+                    .accessibilityLabel("Noise cancelling strength")
+                    .accessibilityValue("\(Int(levelDraft ?? Double(modes.manualLevel))) of 5")
+                    Image(systemName: "speaker.wave.3")
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(mode.title)
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                .font(.caption)
+            case .multiScene?:
+                HStack {
+                    Text("Scene")
+                    Spacer()
+                    Picker("Scene", selection: model.binding({ $0.soundModes.multiScene ?? .transport }, default: .transport) {
+                        try await $0.setMultiScene($1)
+                    }) {
+                        ForEach(MultiSceneMode.allCases) { Text($0.title).tag($0) }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .controlSize(.small)
+                    .fixedSize()
+                }
+            default:
+                EmptyView()
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Building blocks
+
+/// A filled circle with a symbol: accent when on, gray when off (system menu style).
+struct RoundIcon: View {
+    static let rowSize: CGFloat = 26
+    let symbol: String
+    let isOn: Bool
+    var size: CGFloat = rowSize
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.46, weight: .medium))
+            .foregroundStyle(isOn ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .frame(width: size, height: size)
+            .background(Circle().fill(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary)))
+    }
+}
+
+/// Small bold section title, as in the system menu bar panels.
+private struct SectionTitle: View {
+    let title: String
+    init(_ title: String) { self.title = title }
+
+    var body: some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 9)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// A selectable row with a round icon, highlighted on hover.
+private struct IconRow: View {
+    let title: String
+    let symbol: String
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HoverRow(action: action) {
+            HStack(spacing: 9) {
+                RoundIcon(symbol: symbol, isOn: isOn)
+                Text(title)
+                Spacer(minLength: 0)
             }
         }
     }
 }
 
-/// A full-width, menu-style row with hover highlight.
+/// A sub-option row with a leading checkmark.
+private struct CheckRow: View {
+    /// Distance from the row's leading edge to its text: padding + checkmark + spacing.
+    static let textInset: CGFloat = 6 + 12 + 6
+
+    let title: String
+    let isChecked: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HoverRow(action: action, horizontalPadding: 6, verticalPadding: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark")
+                    .font(.caption.weight(.semibold))
+                    .opacity(isChecked ? 1 : 0)
+                    .frame(width: 12)
+                Text(title)
+                Spacer(minLength: 0)
+            }
+        }
+        .accessibilityAddTraits(isChecked ? .isSelected : [])
+    }
+}
+
+/// Full-width menu row for commands (Settings…, Quit).
 struct MenuRow: View {
     let title: String
-    var shortcut: String?
     let action: () -> Void
+
+    var body: some View {
+        HoverRow(action: action) {
+            Text(title)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// A plain button that fills the row and highlights on hover, like a menu item.
+private struct HoverRow<Content: View>: View {
+    let action: () -> Void
+    var horizontalPadding: CGFloat = 9
+    var verticalPadding: CGFloat = 4
+    @ViewBuilder let content: Content
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack {
-                Text(title)
-                Spacer()
-                if let shortcut {
-                    Text(shortcut)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(hovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 6))
-            .contentShape(.rect)
+            content
+                .padding(.horizontal, horizontalPadding)
+                .padding(.vertical, verticalPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(hovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 7))
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+    }
+}
+
+private struct PanelDivider: View {
+    var body: some View {
+        Divider()
+            .padding(.horizontal, 14)
+            .padding(.vertical, 4)
     }
 }

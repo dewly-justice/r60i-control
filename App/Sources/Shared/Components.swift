@@ -2,23 +2,24 @@ import AppKit
 import SoundcoreKit
 import SwiftUI
 
-/// One battery reading: symbol, name, and percentage (or "—" when not reported).
+/// One battery reading: glyph and percentage, with the part's name underneath.
 struct BatteryGauge: View {
     let name: String
     let level: BatteryLevel
     var charging = false
 
     var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: level.symbol(charging: charging) ?? "battery.0percent")
-                .symbolRenderingMode(.hierarchical)
-                .font(.title3)
-                .foregroundStyle(tint)
-                .opacity(level.isAvailable ? 1 : 0.35)
-                .frame(height: 20)
-            Text(level.percent.map { "\($0)%" } ?? "—")
-                .font(.callout.weight(.medium))
-                .monospacedDigit()
+        VStack(spacing: 2) {
+            HStack(spacing: 4) {
+                Image(systemName: level.symbol(charging: charging) ?? "battery.0percent")
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(tint)
+                    .opacity(level.isAvailable ? 1 : 0.35)
+                Text(level.percent.map { "\($0)%" } ?? "—")
+                    .monospacedDigit()
+                    .foregroundStyle(level.isAvailable ? .primary : .secondary)
+            }
+            .font(.callout)
             Text(name)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -29,7 +30,7 @@ struct BatteryGauge: View {
     }
 
     private var tint: Color {
-        guard let percent = level.percent else { return .secondary.opacity(0.6) }
+        guard let percent = level.percent else { return .secondary }
         if charging { return .green }
         return percent <= 20 ? .red : .primary
     }
@@ -53,29 +54,29 @@ struct BatteryRow: View {
     }
 }
 
-/// A label on the leading edge and a small switch on the trailing edge, for the menu panel.
+/// A title on the leading edge and a small switch on the trailing edge, like the switch rows in
+/// the system menu bar panels. `detail` sits right after the title.
 struct SwitchRow<Detail: View>: View {
     let title: String
-    let symbol: String
     @Binding var isOn: Bool
     @ViewBuilder var detail: Detail
 
     var body: some View {
         HStack(spacing: 6) {
-            Label(title, systemImage: symbol)
+            Text(title)
             detail
             Spacer(minLength: 8)
             Toggle(title, isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .controlSize(.small)
+                .controlSize(.mini)
         }
     }
 }
 
 extension SwitchRow where Detail == EmptyView {
-    init(title: String, symbol: String, isOn: Binding<Bool>) {
-        self.init(title: title, symbol: symbol, isOn: isOn) { EmptyView() }
+    init(title: String, isOn: Binding<Bool>) {
+        self.init(title: title, isOn: isOn) { EmptyView() }
     }
 }
 

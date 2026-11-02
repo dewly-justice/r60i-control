@@ -61,7 +61,11 @@ final class AppModel {
             switch event {
             case let .info(message): log.info("\(message, privacy: .public)")
             case let .push(frame): log.debug("push \(frame.command.description, privacy: .public) \(frame.body.hexString, privacy: .public)")
-            case let .link(.sent(bytes, note)): log.debug("→ \(note, privacy: .public) \(bytes.hexString, privacy: .public)")
+            case let .link(.sent(_, note)) where note.hasPrefix("01 01") || note.hasPrefix("0B 01 "):
+                log.debug("→ \(note, privacy: .public)")
+            case let .link(.sent(bytes, note)):
+                // Writes are user actions: keep them in the persisted log.
+                log.info("→ \(note, privacy: .public) \(bytes.hexString, privacy: .public)")
             case let .link(.dropped(bytes, reason)): log.error("dropped \(bytes.count) bytes: \(reason, privacy: .public)")
             case .link: break
             }
