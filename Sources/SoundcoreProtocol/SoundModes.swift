@@ -1,0 +1,161 @@
+// The D1202 8-byte sound-modes block: docs/protocol.md §6.2.
+// It appears at state offset 0x77, is the whole body of the `06 01` push, and is the whole
+// body of the `06 81` write.
+//
+// Encoding mirrors OpenSCQ30 `lib/src/devices/soundcore/d1202/structures.rs` (SoundModes::bytes).
+
+public enum AmbientSoundMode: UInt8, Sendable, CaseIterable {
+    case noiseCanceling = 0
+    case transparency = 1
+    case normal = 2
+
+    public var displayName: String {
+        switch self {
+        case .noiseCanceling: "Noise Canceling"
+        case .transparency: "Transparency"
+        case .normal: "Normal"
+        }
+    }
+}
+
+public enum NoiseCancelingMode: UInt8, Sendable, CaseIterable {
+    case manual = 0
+    case adaptive = 1
+    case multiScene = 2
+
+    public var displayName: String {
+        switch self {
+        case .manual: "Manual"
+        case .adaptive: "Adaptive"
+        case .multiScene: "Multi-scene"
+        }
+    }
+}
+
+public enum TransparencyMode: UInt8, Sendable, CaseIterable {
+    case fullyTransparent = 0
+    case vocalMode = 1
+
+    public var displayName: String {
+        switch self {
+        case .fullyTransparent: "Fully transparent"
+        case .vocalMode: "Vocal mode"
+        }
+    }
+}
+
+public enum MultiSceneMode: UInt8, Sendable, CaseIterable {
+    case transport = 0
+    case outdoor = 1
+    case indoor = 2
+
+    public var displayName: String {
+        switch self {
+        case .transport: "Transport"
+        case .outdoor: "Outdoor"
+        case .indoor: "Indoor"
+        }
+    }
+}
+
+public enum AdaptiveStrength: UInt8, Sendable, CaseIterable {
+    case weak = 0
+    case moderate = 1
+    case strong = 2
+
+    public var displayName: String {
+        switch self {
+        case .weak: "Weak"
+        case .moderate: "Moderate"
+        case .strong: "Strong"
+        }
+    }
+}
+
+public struct SoundModes: Hashable, Sendable {
+    public static let byteCount = 8
+    public static let manualLevelRange: ClosedRange<UInt8> = 1...5
+
+    /// The 8 bytes exactly as the device sent them. Typed accessors read from and write to this array.
+    public private(set) var raw: [UInt8]
+
+    public init(bytes: some Collection<UInt8>) throws(ParseError) {
+        guard bytes.count >= Self.byteCount else {
+            throw ParseError.tooShort(what: "sound modes", needed: Self.byteCount, got: bytes.count)
+        }
+        raw = Array(bytes.prefix(Self.byteCount))
+    }
+
+    // MARK: Byte 0
+    public var ambientRaw: UInt8 { raw[0] }
+    public var ambient: AmbientSoundMode? {
+        get { AmbientSoundMode(rawValue: raw[0]) }
+        set { if let newValue { raw[0] = newValue.rawValue } }
+    }
+
+    // MARK: Byte 1 — high nibble manual level, low nibble adaptive strength (read-only)
+    public var manualLevelRaw: UInt8 { raw[1] >> 4 }
+    public var adaptiveStrengthRaw: UInt8 { raw[1] & 0x0F }
+    public var adaptiveStrength: AdaptiveStrength? { AdaptiveStrength(rawValue: adaptiveStrengthRaw) }
+
+    // MARK: Byte 2
+    public var transparencyRaw: UInt8 { raw[2] }
+    public var transparency: TransparencyMode? { TransparencyMode(rawValue: raw[2]) }
+
+    // MARK: Byte 3
+    public var noiseCancelingModeRaw: UInt8 { raw[3] }
+    public var noiseCancelingMode: NoiseCancelingMode? { NoiseCancelingMode(rawValue: raw[3]) }
+
+    // MARK: Byte 4 — bit 0 suppression enabled, bit 1 wind detected (read-only)
+    public var windNoiseRaw: UInt8 { raw[4] }
+    public var windNoiseSuppression: Bool { raw[4] & 0x01 != 0 }
+    public var windDetected: Bool { raw[4] & 0x02 != 0 }
+
+    // MARK: Byte 5 — unknown
+    public var unknownByte5: UInt8 { raw[5] }
+
+    // MARK: Byte 6
+    public var multiSceneRaw: UInt8 { raw[6] }
+    public var multiScene: MultiSceneMode? { MultiSceneMode(rawValue: raw[6]) }
+
+    // MARK: Byte 7
+    public var realTimeAdaptiveRaw: UInt8 { raw[7] }
+    public var realTimeAdaptive: Bool { raw[7] == 1 }
+
+    /// Bytes for a `06 81` write, encoded the way OpenSCQ30 does it:
+    /// - enum fields are written as they are;
+    /// - the manual level is clamped to 1…5;
+    /// - only wind bits 0–1 are kept;
+    /// - byte 5 is always 0;
+    /// - byte 7 is 0 or 1.
+    ///
+    /// Throws if any enum field holds a value OpenSCQ30 doesn't know. OpenSCQ30 would quietly
+    /// replace it with a default. We refuse instead, so we never write a value the device didn't send.
+    public func encodedForWrite() throws(EncodeError) -> [UInt8] {
+        var unknown: [String] = []
+        if ambient == nil { unknown.append("ambient mode = \(ambientRaw)") }
+        if adaptiveStrength == nil { unknown.append("adaptive strength = \(adaptiveStrengthRaw)") }
+        if transparency == nil { unknown.append("transparency = \(transparencyRaw)") }
+        if noiseCancelingMode == nil { unknown.append("noise-canceling mode = \(noiseCancelingModeRaw)") }
+        if windNoiseRaw & ~0x03 != 0 { unknown.append("wind noise bits = \([windNoiseRaw].hexString)") }
+        if multiScene == nil { unknown.append("multi-scene = \(multiSceneRaw)") }
+        if realTimeAdaptiveRaw > 1 { unknown.append("real-time adaptive = \(realTimeAdaptiveRaw)") }
+        guard unknown.isEmpty,
+              let ambient, let adaptiveStrength, let transparency, let noiseCancelingMode, let multiScene
+        else {
+            throw EncodeError.unknownValues(unknown)
+        }
+
+        let manual = min(max(manualLevelRaw, Self.manualLevelRange.lowerBound), Self.manualLevelRange.upperBound)
+        return [
+            ambient.rawValue,
+            manual << 4 | adaptiveStrength.rawValue,
+            transparency.rawValue,
+            noiseCancelingMode.rawValue,
+            windNoiseRaw & 0x03,
+            0,
+            multiScene.rawValue,
+            realTimeAdaptive ? 1 : 0,
+        ]
+    }
+}

@@ -138,7 +138,7 @@ device pushes them.
 | EQ band value | `byte = tenths_of_dB + 120`. So `120` = 0.0 dB, `0` = −12.0 dB, `254` = +13.4 dB. One step is 0.1 dB. | `sc/common/structures/equalizer_configuration.rs` (`CommonEqualizerConfiguration` = min −120, max 134, 1 fraction digit), `volume_adjustments.rs` |
 | EQ channel absent | if the **first** byte of a 10-byte channel block is `0xFF`, the whole channel is "not present". When writing an absent channel, send ten `0xFF` bytes. | `sc/common/structures/volume_adjustments.rs` (`take_optional`, `OptionalVolumeAdjustmentsExt::bytes`) |
 | Button action byte | low nibble = action when **both buds are linked** (TWS connected); high nibble = action when **one bud is used alone**. Nibble `0xF` = gesture disabled. | `sc/common/structures/button_configuration.rs` (`ActionKind::TwsLowBits`) |
-| Unknown enum values | OpenSCQ30 maps an unrecognized enum byte to the enum's first variant. **We will keep the raw byte instead**, so we never write back a value the device didn't send. | `sc/common/macros.rs` (`sound_mode_enum!`) |
+| Unknown enum values | OpenSCQ30 maps an unrecognized enum byte to the enum's first variant. **We keep the raw byte when reading. Writes refuse** if a field to be written holds a value outside the documented set, so we never send a value the device didn't report. | `sc/common/macros.rs` (`sound_mode_enum!`); ours: `Sources/SoundcoreProtocol/SoundModes.swift` |
 
 ---
 
@@ -520,7 +520,7 @@ Full state reply header            09 FF 00 00 01 01 01 A2 00 …152-byte body�
 | When | Packet |
 |---|---|
 | Connect | `01 01` RequestState, then parse §6.1 |
-| `set-mode anc\|transparency\|normal` | read state → copy the 8-byte sound-modes block → change **only byte 0** → apply the same normalizations OpenSCQ30 does (byte 5 = 0; manual level clamped to 1–5) → send `06 81` → wait for ACK → send `01 01` again to confirm the change |
+| `set-mode anc\|transparency\|normal` | confirm the model (vendor UUID suffix `1202C`/`D1202`, or the name contains "R60i") → read state → copy the 8-byte sound-modes block → change **only byte 0** → apply the same normalizations OpenSCQ30 does (byte 5 = 0; manual level clamped to 1–5; wind bits 0–1 only). Refuse if any enum byte is unknown → send `06 81` → wait for ACK → send `01 01` again to confirm the change |
 
 Every other write in §7.2 is for Phase 2, and each one will be tested against captured
 fixtures before use.
