@@ -100,10 +100,10 @@ struct SetSoundModesTests {
         }
     }
 
-    @Test("Normalization matches OpenSCQ30: byte 5 → 0, manual level clamped, wind bit 1 kept")
+    @Test("Normalization: manual level clamped, wind bit 1 kept (as OpenSCQ30); byte 5 echoed (#424)")
     func normalization() throws {
         let modes = try SoundModes(bytes: [2, 0x02, 1, 1, 0x03, 0x7A, 2, 1])
-        #expect(try modes.encodedForWrite() == [2, 0x12, 1, 1, 0x03, 0, 2, 1])
+        #expect(try modes.encodedForWrite() == [2, 0x12, 1, 1, 0x03, 0x7A, 2, 1])
     }
 
     @Test("Unknown enum values are refused instead of being rewritten")

@@ -156,14 +156,15 @@ public struct SoundModes: Hashable, Sendable {
     /// Bytes for a `06 81` write, encoded the way OpenSCQ30 does it:
     /// - enum fields are written as they are;
     /// - the manual level is clamped to 1…5;
-    /// - only wind bits 0–1 are kept;
-    /// - byte 5 is always 0;
+    /// - only wind bits 0–1 are kept (bit 1, "wind detected", is echoed as OpenSCQ30 does);
     /// - byte 7 is 0 or 1.
     ///
-    /// One deliberate difference: the adaptive-strength nibble (byte 1, low 4 bits) is read-only
-    /// (OpenSCQ30 shows it as information and rejects setting it), so it is sent back exactly as
-    /// the earbuds reported it. A real R60i NC reports 5, which OpenSCQ30's Weak/Moderate/Strong
-    /// enum can't hold, so OpenSCQ30 would send 0 instead (docs/protocol.md §6.2).
+    /// Two deliberate differences, both "send back what the earbuds reported":
+    /// - the read-only adaptive nibble (byte 1, low 4 bits). A real R60i NC reports 3 or 5,
+    ///   which OpenSCQ30's Weak/Moderate/Strong enum can't hold, so OpenSCQ30 would send 0;
+    /// - byte 5, meaning unknown, which OpenSCQ30 always writes as 0 (OpenSCQ30 issue #424).
+    ///   Every capture so far has 0 there, so the bytes sent are the same today.
+    /// (docs/protocol.md §6.2)
     ///
     /// Throws if any other enum field holds a value OpenSCQ30 doesn't know. OpenSCQ30 would quietly
     /// replace it with a default. We refuse instead, so we never write a value the device didn't send.
@@ -188,7 +189,7 @@ public struct SoundModes: Hashable, Sendable {
             transparency.rawValue,
             noiseCancelingMode.rawValue,
             windNoiseRaw & 0x03,
-            0,
+            unknownByte5,
             multiScene.rawValue,
             realTimeAdaptive ? 1 : 0,
         ]

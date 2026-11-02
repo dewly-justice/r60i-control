@@ -11,6 +11,7 @@ own words. No OpenSCQ30 code is copied here.
 | Device module | `lib/src/devices/soundcore/d1202.rs`. OpenSCQ30 maps **both** `SoundcoreD1202` (P31i) and `SoundcoreD1202C` (R60i NC) to this one module (`lib/src/devices/device_model.rs:134-135`). |
 | Path shorthand | `sc/…` means `lib/src/devices/soundcore/…` in the OpenSCQ30 tree |
 | Local checkout | `vendor/OpenSCQ30` (git-ignored) |
+| Feature research | [`docs/research/r60i-nc-features.md`](research/r60i-nc-features.md): what Soundcore documents for the R60i NC, and what OpenSCQ30 covers |
 
 > **Rule for this project:** we only send a write packet if its byte layout appears
 > in this document **and** is cited to OpenSCQ30. If a packet is not listed under §7,
@@ -272,7 +273,7 @@ Source: `sc/d1202/structures.rs:18-97`,
 | 2 | Transparency mode | `0` Fully transparent, `1` Vocal mode |
 | 3 | Noise-canceling mode | `0` Manual, `1` Adaptive, `2` Multi-scene |
 | 4 | Wind noise bitfield | bit 0 = wind-noise **suppression enabled** (settable); bit 1 = wind **currently detected** (read-only) |
-| 5 | unknown | OpenSCQ30 ignores it on read and **always writes `0`** |
+| 5 | unknown | OpenSCQ30 ignores it on read and **always writes `0`**, which OpenSCQ30 issue #424 questions. We send it back as read. Every capture so far has `00`, so the bytes are the same today. |
 | 6 | Multi-scene ANC | `0` Transport, `1` Outdoor, `2` Indoor |
 | 7 | Real-time adaptive ANC — bool | |
 
@@ -449,7 +450,7 @@ setting restored. Every one was acknowledged with an empty-body frame, as §3 de
 | Write | Result |
 |---|---|
 | `06 81` mode, NC mode, manual level, multi-scene, transparency, wind, real-time adaptive | applied and restored. The adaptive nibble was sent back as read (§6.2) |
-| `03 87` preset (Acoustic), custom EQ, Soundcore Signature | applied; spatial audio turned off, as §7.4 says. HearID bytes unchanged (type `FF` sent back as `FF`) |
+| `03 87` preset (Acoustic), custom EQ, Soundcore Signature | applied; spatial audio turned off, as §7.4 says. HearID bytes unchanged (type `FF` sent back as `FF`). **Caveat:** only the right bud was linked. OpenSCQ30 refuses EQ changes while TWS is unlinked (`common/modules/equalizer/setting_handler.rs`, commit `7cfe336`), because the other bud would keep its old EQ. SoundcoreKit now refuses too |
 | `10 81` spatial audio on (Music, Movie) / off via `03 87` | applied and restored |
 | `04 81` right double press (solo nibble, since TWS was not linked) | applied and restored |
 | `01 86` auto power-off 60 → 30 min | applied and restored |
@@ -457,7 +458,7 @@ setting restored. Every one was acknowledged with an empty-body frame, as §3 de
 | `20 82` volume limit 85 dB on → 90 dB off, `20 81` refresh rate | applied and restored |
 | `0B 84` dual connection off → on | applied and restored |
 | `0B 01` device list | 2 records, MAC bytes reversed (§6.8) |
-| `01 FF` LDAC on | **acknowledged but not applied**: offset 0x82 stayed `00`, no `01 7F` push. Same result with dual connection off |
+| `01 FF` LDAC on | **acknowledged but not applied**: offset 0x82 stayed `00`, no `01 7F` push. Same result with dual connection off. Spatial audio was **on** during both tries, and Soundcore's FAQ says LDAC and spatial audio exclude each other (see the research doc). With spatial audio off: not tested |
 | `04 82` reset buttons, `0B 81/82/83` | not tested on hardware. Reset can't be undone while TWS is unlinked (only one nibble is writable), and forget can't be undone at all |
 
 Restoring the EQ needed one extra write. Every OpenSCQ30 preset sets hidden band 10 to −12 dB
@@ -578,8 +579,9 @@ This is the complete list, so it is the upper limit of what the app can offer:
   R60i NC that has never run HearID, these bytes are `FF` and the type byte (86) is `FF`,
   outside OpenSCQ30's enum. Check how `03 87` (§7.3) handles that before Phase 2 sends any EQ write.
 - Spatial audio: confirmed on the R60i NC (Music/Movie on and off all apply, §7.5).
-- LDAC: the R60i NC acknowledges `01 FF [01]` but keeps LDAC off while connected to a Mac,
-  with dual connection on or off. It may need an LDAC-capable source; unverified.
+- LDAC: the R60i NC acknowledged `01 FF [01]` but kept LDAC off, with spatial audio on.
+  Soundcore documents that LDAC and spatial audio exclude each other, that LDAC is Android-only,
+  and that switching codecs takes about 10 s. Not yet tried with spatial audio off.
 - Adaptive ANC nibble: the R60i NC reports values outside OpenSCQ30's `0…2` names (`5`, `3`),
   changing on its own. It looks like a live level. It is read-only either way (§6.2).
 - State offset `0x8B`: flips between `00` and `01` on its own. Meaning unknown.
@@ -622,10 +624,12 @@ Both use `SoundcoreKit`'s `SoundcoreDevice`, so they send exactly the same packe
 Rules every write follows:
 - The model must be confirmed by the vendor UUID suffix (`1202C`/`D1202`), otherwise writes are
   refused.
-- Sound-mode writes copy the 8-byte block, change only the requested field, apply OpenSCQ30's
-  normalizations (byte 5 = 0; manual level 1–5; wind bits 0–1), and send the read-only
-  adaptive nibble back as reported (§6.2). They refuse if another enum byte is unknown.
-- EQ writes send the HearID block back as reported (§7.3).
+- Sound-mode writes copy the 8-byte block, change only the requested field, and apply
+  OpenSCQ30's normalizations (manual level 1–5; wind bits 0–1). The read-only adaptive nibble
+  and the unknown byte 5 are sent back as reported (§6.2). They refuse if another enum byte is
+  unknown.
+- EQ writes need both buds linked (as in OpenSCQ30) and send the HearID block back as reported
+  (§7.3).
 - Button writes change only the nibble for the current TWS state (§8.7).
 - If the earbuds don't acknowledge a write (3 attempts, §3), the cached state is rolled back and
   re-read.

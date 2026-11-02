@@ -95,6 +95,13 @@ struct GeneralTab: View {
             LabeledContent("Serial Number") {
                 Text(state.serialNumber).textSelection(.enabled).monospaced()
             }
+            LabeledContent {
+                Text("\(state.soundModes.adaptiveStrengthRaw)")
+                    .monospacedDigit()
+            } label: {
+                Text("Adaptive ANC Value")
+                Text("Raw value the earbuds report. Its meaning isn't documented.")
+            }
             LabeledContent("Last Updated") {
                 HStack {
                     if let lastRefresh = model.device.lastRefresh {

@@ -69,11 +69,6 @@ struct NoiseControlTab: View {
                         Toggle("Real-Time Adaptive ANC", isOn: model.binding({ $0.soundModes.realTimeAdaptive }, default: false) {
                             try await $0.setRealTimeAdaptive($1)
                         })
-                        LabeledContent("Adaptive Strength") {
-                            Text(modes.adaptiveStrength.map { "\($0.displayName)" } ?? "\(modes.adaptiveStrengthRaw)")
-                                .monospacedDigit()
-                        }
-                        .help("Reported by the earbuds; it changes on its own.")
                     case .manual?:
                         LabeledContent("Strength") {
                             HStack {

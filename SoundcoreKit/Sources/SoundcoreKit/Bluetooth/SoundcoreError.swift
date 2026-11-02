@@ -21,6 +21,8 @@ public enum SoundcoreError: Error, Equatable, Sendable, CustomStringConvertible,
     case unconfirmedModel(String)
     /// The earbuds acknowledged a write but the state doesn't show it.
     case notApplied(String)
+    /// The equalizer can only change while both earbuds are linked (OpenSCQ30 `7cfe336`).
+    case bothEarbudsRequired
 
     public var description: String {
         switch self {
@@ -71,6 +73,8 @@ public enum SoundcoreError: Error, Equatable, Sendable, CustomStringConvertible,
             "Refusing to change settings: can't confirm these are D1202/D1202C earbuds (\(details))."
         case let .notApplied(details):
             "The earbuds accepted the change but didn't apply it. \(details)"
+        case .bothEarbudsRequired:
+            "Put both earbuds in to change the equalizer."
         }
     }
 

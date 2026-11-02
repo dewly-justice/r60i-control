@@ -52,11 +52,18 @@ Settings → General.
 - **Touch controls follow the current situation.** As in the Soundcore app, editing a control
   changes the two-earbud mapping when both buds are in use, and the one-earbud mapping when only
   one is.
-- **EQ and spatial audio are linked.** The earbuds turn spatial audio off whenever the
-  equalizer changes.
-- **LDAC** is for LDAC-capable sources such as Android phones. Macs don't use it. A real R60i
-  NC connected to a Mac acknowledges "LDAC on" but keeps it off; the app reports that instead of
-  pretending it worked.
+- **The equalizer needs both earbuds.** Like OpenSCQ30, the app only changes the EQ while both
+  buds are in; otherwise the other bud would keep its old EQ.
+- **EQ, spatial audio and LDAC interact.** The earbuds turn spatial audio off whenever the
+  equalizer changes. LDAC and spatial audio can't be on together (Soundcore FAQ), so the app
+  greys out whichever one is blocked. Gaming, under Spatial Audio, is the low-latency mode.
+- **LDAC** only matters for Android devices; Macs don't use it. If the earbuds acknowledge
+  "LDAC on" but keep it off, the app says so instead of pretending it worked.
+
+**Not supported**, because no packet for it is documented for this model:
+Fit Test, the HearID hearing test, the AI assistant and AI Translation, firmware updates, and
+adding Normal to the long-press cycle. See
+[`docs/research/r60i-nc-features.md`](docs/research/r60i-nc-features.md).
 
 ## Troubleshooting
 

@@ -126,11 +126,30 @@ struct DeviceModelTests {
         }
     }
 
+    /// The capture with both buds linked (state byte 1 = TWS connected).
+    static var linkedBody: [UInt8] {
+        var body = r60iBody
+        body[1] = 1
+        return body
+    }
+
     @Test func equalizerWriteRereadsState() async throws {
-        let (device, link) = try await connected()
+        let (device, link) = try await connected(body: Self.linkedBody)
         try await device.selectEqualizerPreset(EqualizerPreset.all[2])
         #expect(link.written.map(\.command) == [.state, .dualConnectionDevices, .setEqualizer, .state])
         #expect(link.writes.first?.body.count == 114)
+    }
+
+    /// Like OpenSCQ30, the EQ isn't changed while only one bud is linked.
+    @Test func equalizerNeedsBothEarbuds() async throws {
+        let (device, link) = try await connected() // capture: right bud only
+        await #expect(throws: SoundcoreError.bothEarbudsRequired) {
+            try await device.selectEqualizerPreset(EqualizerPreset.all[2])
+        }
+        await #expect(throws: SoundcoreError.bothEarbudsRequired) {
+            try await device.setCustomEqualizer([0, 0, 0, 0, 0, 0, 0, 0])
+        }
+        #expect(link.writes.isEmpty)
     }
 
     @Test func spatialAudioOffIsAnEqualizerPacket() async throws {

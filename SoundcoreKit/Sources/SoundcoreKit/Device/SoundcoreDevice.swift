@@ -413,6 +413,9 @@ public final class SoundcoreDevice {
     }
 
     private func writeEqualizer(_ write: EqualizerWrite) async throws(SoundcoreError) {
+        // Like OpenSCQ30 (common/modules/equalizer/setting_handler.rs), never change the EQ
+        // while the buds aren't linked: the other bud would keep its old EQ.
+        guard try currentState().tws.isConnected else { throw .bothEarbudsRequired }
         // The earbuds turn spatial audio off after an EQ write (§7.4).
         try await perform(Requests.setEqualizer(write), refreshAfter: true) { state in
             state.equalizer = write.resultingConfiguration
@@ -528,7 +531,7 @@ public final class SoundcoreDevice {
         guard try currentState().ldac != enabled else { return }
         try await perform(Requests.setLDAC(enabled), refreshAfter: true) { $0.ldac = enabled }
         if state?.ldac != enabled {
-            throw .notApplied("LDAC stayed off. It may only turn on while an LDAC-capable source (such as an Android phone) is connected; Macs don't use LDAC.")
+            throw .notApplied("LDAC stayed off. Soundcore says LDAC can't be on together with Spatial Audio, and only works with Android devices.")
         }
     }
 

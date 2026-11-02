@@ -14,6 +14,7 @@ struct SoundTab: View {
 
     var body: some View {
         RequiresConnection { state in
+            let bothEarbuds = state.tws.isConnected
             Form {
                 Section {
                     Picker("Preset", selection: presetBinding(state)) {
@@ -30,15 +31,21 @@ struct SoundTab: View {
                         model.perform { try await $0.setCustomEqualizer(bands) }
                     }
                     .padding(.vertical, 4)
+                    .disabled(!bothEarbuds)
                 } header: {
                     Text("Equalizer")
                 } footer: {
-                    Text(state.spatialAudio.isEnabled
-                        ? "Dragging a band switches to Custom. Changing the equalizer turns Spatial Audio off."
-                        : "Dragging a band switches to Custom.")
+                    if !bothEarbuds {
+                        Text("Put both earbuds in to change the equalizer.")
+                    } else if state.spatialAudio.isEnabled {
+                        Text("Dragging a band switches to Custom. Changing the equalizer turns Spatial Audio off.")
+                    } else {
+                        Text("Dragging a band switches to Custom.")
+                    }
                 }
+                .disabled(!bothEarbuds)
 
-                Section("Spatial Audio") {
+                Section {
                     Toggle("Spatial Audio", isOn: Binding(
                         get: { state.spatialAudio.isEnabled },
                         set: { on in
@@ -54,16 +61,26 @@ struct SoundTab: View {
                     }
                     .pickerStyle(.segmented)
                     .disabled(!state.spatialAudio.isEnabled)
+                } header: {
+                    Text("Spatial Audio")
+                } footer: {
+                    Text(state.ldac
+                        ? "Turn off LDAC to use Spatial Audio. The two can't be on together."
+                        : "Gaming is the earbuds' low-latency mode.")
                 }
+                .disabled(state.ldac)
 
                 Section {
                     Toggle("LDAC", isOn: model.binding({ $0.ldac }, default: false) {
                         try await $0.setLDAC($1)
                     })
+                    .disabled(state.spatialAudio.isEnabled)
                 } header: {
                     Text("Audio Quality")
                 } footer: {
-                    Text("LDAC is a high-resolution codec for sources that support it, such as many Android phones. Macs don't use LDAC, and the earbuds may keep it off while connected to one.")
+                    Text(state.spatialAudio.isEnabled
+                        ? "Turn off Spatial Audio to use LDAC. The two can't be on together."
+                        : "LDAC is a high-resolution codec that only Android devices use; Macs don't. Switching codecs takes about 10 seconds.")
                 }
             }
             .formStyle(.grouped)
