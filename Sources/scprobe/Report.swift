@@ -11,11 +11,7 @@ enum Report {
 
         // Device
         out.append(connection.displayName)
-        let serviceKind = switch connection.kind {
-        case .vendor: "Soundcore vendor service"
-        case .serialPort: "Serial Port service"
-        }
-        row("Service", "\(serviceKind) \(SoundcoreServiceUUID.format(connection.serviceUUID)), RFCOMM channel \(connection.channelID)")
+        row("Service", "Soundcore vendor service \(SoundcoreServiceUUID.format(connection.serviceUUID)), RFCOMM channel \(connection.channelID)")
         row("Model check", "\(connection.modelConfirmed ? "OK" : "NOT CONFIRMED") — \(connection.modelNote)")
         row("Firmware", "left \(state.firmwareLeft.displayString ?? "—") · right \(state.firmwareRight.displayString ?? "—")")
         row("Serial", state.serialNumber)
@@ -36,7 +32,7 @@ enum Report {
         let scene = modes.multiScene?.displayName ?? "unknown (\(modes.multiSceneRaw))"
         row("ANC mode", modes.noiseCancelingMode == .multiScene ? "\(ncMode) → \(scene)" : "\(ncMode) (multi-scene setting: \(scene))")
         row("Manual ANC level", "\(modes.manualLevelRaw) / 5")
-        row("Adaptive strength", "\(modes.adaptiveStrength?.displayName ?? "unknown (\(modes.adaptiveStrengthRaw))") (reported by earbuds)")
+        row("Adaptive strength", "\(modes.adaptiveStrength?.displayName ?? "raw \(modes.adaptiveStrengthRaw) (OpenSCQ30 only names 0–2)") (read-only, reported by earbuds)")
         row("Transparency", modes.transparency?.displayName ?? "unknown (\(modes.transparencyRaw))")
         row("Wind noise", "suppression \(onOff(modes.windNoiseSuppression)), wind \(modes.windDetected ? "detected" : "not detected")")
         row("Real-time adaptive", onOff(modes.realTimeAdaptive))

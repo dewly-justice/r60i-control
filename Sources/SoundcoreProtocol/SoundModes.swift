@@ -129,19 +129,23 @@ public struct SoundModes: Hashable, Sendable {
     /// - byte 5 is always 0;
     /// - byte 7 is 0 or 1.
     ///
-    /// Throws if any enum field holds a value OpenSCQ30 doesn't know. OpenSCQ30 would quietly
+    /// One deliberate difference: the adaptive-strength nibble (byte 1, low 4 bits) is read-only
+    /// (OpenSCQ30 shows it as information and rejects setting it), so it is sent back exactly as
+    /// the earbuds reported it. A real R60i NC reports 5, which OpenSCQ30's Weak/Moderate/Strong
+    /// enum can't hold, so OpenSCQ30 would send 0 instead (docs/protocol.md §6.2).
+    ///
+    /// Throws if any other enum field holds a value OpenSCQ30 doesn't know. OpenSCQ30 would quietly
     /// replace it with a default. We refuse instead, so we never write a value the device didn't send.
     public func encodedForWrite() throws(EncodeError) -> [UInt8] {
         var unknown: [String] = []
         if ambient == nil { unknown.append("ambient mode = \(ambientRaw)") }
-        if adaptiveStrength == nil { unknown.append("adaptive strength = \(adaptiveStrengthRaw)") }
         if transparency == nil { unknown.append("transparency = \(transparencyRaw)") }
         if noiseCancelingMode == nil { unknown.append("noise-canceling mode = \(noiseCancelingModeRaw)") }
         if windNoiseRaw & ~0x03 != 0 { unknown.append("wind noise bits = \([windNoiseRaw].hexString)") }
         if multiScene == nil { unknown.append("multi-scene = \(multiSceneRaw)") }
         if realTimeAdaptiveRaw > 1 { unknown.append("real-time adaptive = \(realTimeAdaptiveRaw)") }
         guard unknown.isEmpty,
-              let ambient, let adaptiveStrength, let transparency, let noiseCancelingMode, let multiScene
+              let ambient, let transparency, let noiseCancelingMode, let multiScene
         else {
             throw EncodeError.unknownValues(unknown)
         }
@@ -149,7 +153,7 @@ public struct SoundModes: Hashable, Sendable {
         let manual = min(max(manualLevelRaw, Self.manualLevelRange.lowerBound), Self.manualLevelRange.upperBound)
         return [
             ambient.rawValue,
-            manual << 4 | adaptiveStrength.rawValue,
+            manual << 4 | adaptiveStrengthRaw,
             transparency.rawValue,
             noiseCancelingMode.rawValue,
             windNoiseRaw & 0x03,

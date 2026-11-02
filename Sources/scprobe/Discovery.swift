@@ -11,15 +11,11 @@ struct ServiceInfo {
 
 /// How the probe reached the earbuds. Plain values, so the report can be tested without Bluetooth.
 struct ConnectionSummary {
-    enum ServiceKind {
-        case vendor(suffix: String)
-        case serialPort
-    }
-
     let displayName: String
     let channelID: UInt8
     let serviceUUID: [UInt8]
-    let kind: ServiceKind
+    /// Last 5 hex digits of the vendor service UUID, e.g. "1202C".
+    let vendorSuffix: String
     /// True if the device is confirmed to use the D1202 state/write layouts.
     let modelConfirmed: Bool
     let modelNote: String
@@ -54,31 +50,44 @@ final class Discovery: NSObject {
 
     static func services(of device: IOBluetoothDevice) -> [ServiceInfo] {
         (device.services ?? []).compactMap { $0 as? IOBluetoothSDPServiceRecord }.map { record in
-            // Attribute 0x0001 = ServiceClassIDList: a sequence of UUIDs.
-            let elements = record.getAttributeDataElement(0x0001)?.getArrayValue() ?? []
-            let uuids: [[UInt8]] = elements.compactMap { element in
-                guard let element = element as? IOBluetoothSDPDataElement,
-                      let uuid = element.getUUIDValue()?.getWithLength(16)
-                else { return nil }
-                return Array(UnsafeRawBufferPointer(start: uuid.bytes, count: uuid.length))
-            }
             var channel: BluetoothRFCOMMChannelID = 0
             let hasChannel = record.getRFCOMMChannelID(&channel) == kIOReturnSuccess
-            return ServiceInfo(name: record.getServiceName(), classUUIDs: uuids, channelID: hasChannel ? channel : nil)
+            return ServiceInfo(
+                name: record.getServiceName(),
+                classUUIDs: classUUIDs(record.getAttributeDataElement(0x0001)),
+                channelID: hasChannel ? channel : nil
+            )
         }
     }
 
-    /// Soundcore vendor service first, then Serial Port. Only services that have an RFCOMM channel count.
-    static func pickService(_ services: [ServiceInfo]) -> (ServiceInfo, [UInt8], ConnectionSummary.ServiceKind)? {
+    /// The UUIDs in a ServiceClassIDList (SDP attribute 0x0001), each expanded to 128 bits.
+    /// The spec says this attribute is a sequence of UUIDs, but the R60i NC publishes a bare
+    /// UUID, so both forms are accepted.
+    static func classUUIDs(_ element: IOBluetoothSDPDataElement?) -> [[UInt8]] {
+        guard let element else { return [] }
+        switch Int(element.getTypeDescriptor()) {
+        case kBluetoothSDPDataElementTypeUUID:
+            guard let uuid = element.getUUIDValue()?.getWithLength(16) else { return [] }
+            return [Array(UnsafeRawBufferPointer(start: uuid.bytes, count: uuid.length))]
+        case kBluetoothSDPDataElementTypeDataElementSequence, kBluetoothSDPDataElementTypeDataElementAlternative:
+            return (element.getArrayValue() ?? []).compactMap { $0 as? IOBluetoothSDPDataElement }.flatMap { child in
+                Int(child.getTypeDescriptor()) == kBluetoothSDPDataElementTypeUUID ? classUUIDs(child) : []
+            }
+        default:
+            return []
+        }
+    }
+
+    /// The Soundcore vendor service (0CF12D31-…-D6832E7xxxxx) with an RFCOMM channel, or nil.
+    ///
+    /// No Serial Port (0x1101) fallback, unlike OpenSCQ30: on the R60i NC the only record with
+    /// that class is "TOTA", which looks like the earbud chip's firmware-update channel
+    /// (docs/protocol.md §1). We never send anything to it.
+    static func pickService(_ services: [ServiceInfo]) -> (ServiceInfo, uuid: [UInt8], suffix: String)? {
         for service in services where service.channelID != nil {
             if let uuid = service.classUUIDs.first(where: SoundcoreServiceUUID.isVendor),
                let suffix = SoundcoreServiceUUID.vendorSuffix(uuid) {
-                return (service, uuid, .vendor(suffix: suffix))
-            }
-        }
-        for service in services where service.channelID != nil {
-            if let uuid = service.classUUIDs.first(where: { $0 == SoundcoreServiceUUID.serialPort }) {
-                return (service, uuid, .serialPort)
+                return (service, uuid, suffix)
             }
         }
         return nil
@@ -151,35 +160,19 @@ final class Discovery: NSObject {
 
         if forceRefresh || Self.pickService(services) == nil {
             log.info("Querying Bluetooth services (SDP) on \(label)…")
-            let status = refreshSDP(device)
-            if status != kIOReturnSuccess {
-                log.info("SDP query did not succeed: \(ioReturnDescription(status))")
-            }
+            refreshSDP(device)
             services = Self.services(of: device)
             fromCache = false
         }
 
-        guard let (service, uuid, kind) = Self.pickService(services), let channel = service.channelID else {
-            throw ProbeError.noService(device: label)
+        guard let (service, uuid, suffix) = Self.pickService(services), let channel = service.channelID else {
+            throw ProbeError.noService(device: label, records: services.count, connected: device.isConnected())
         }
 
-        let nameMatches = (device.name ?? "").localizedCaseInsensitiveContains("R60i")
-        let confirmed: Bool
-        let note: String
-        switch kind {
-        case let .vendor(suffix) where SoundcoreServiceUUID.d1202Suffixes.contains(suffix):
-            confirmed = true
-            note = "model ID \(suffix) from service UUID"
-        case let .vendor(suffix):
-            confirmed = false
-            note = "service UUID suggests model \(suffix), not D1202/D1202C"
-        case .serialPort where nameMatches:
-            confirmed = true
-            note = "no vendor service; matched by device name"
-        case .serialPort:
-            confirmed = false
-            note = "no vendor service and the name doesn't contain \"R60i\""
-        }
+        let confirmed = SoundcoreServiceUUID.d1202Suffixes.contains(suffix)
+        let note = confirmed
+            ? "model ID \(suffix) from service UUID"
+            : "service UUID suggests model \(suffix), not D1202/D1202C"
 
         return Target(
             device: device,
@@ -187,7 +180,7 @@ final class Discovery: NSObject {
                 displayName: label,
                 channelID: channel,
                 serviceUUID: uuid,
-                kind: kind,
+                vendorSuffix: suffix,
                 modelConfirmed: confirmed,
                 modelNote: note
             ),
@@ -195,13 +188,25 @@ final class Discovery: NSObject {
         )
     }
 
-    /// Runs an SDP query and waits up to 20 s for it to finish.
-    private func refreshSDP(_ device: IOBluetoothDevice) -> IOReturn {
+    /// Runs an SDP query, waits up to 20 s for it to finish, and logs how it went.
+    private func refreshSDP(_ device: IOBluetoothDevice) {
         sdpStatus = nil
+        let started = Date()
         let start = device.performSDPQuery(self)
-        guard start == kIOReturnSuccess else { return start }
+        guard start == kIOReturnSuccess else {
+            log.info("Couldn't start the SDP query: \(ioReturnDescription(start))")
+            return
+        }
         RunLoopWait.until(timeout: 20) { sdpStatus != nil }
-        return sdpStatus ?? kIOReturnTimeout
+        let elapsed = String(format: "%.1f s", Date().timeIntervalSince(started))
+        switch sdpStatus {
+        case nil:
+            log.info("SDP query: no answer from macOS within \(elapsed).")
+        case let status? where status != kIOReturnSuccess:
+            log.info("SDP query failed after \(elapsed): \(ioReturnDescription(status))")
+        default:
+            log.info("SDP query finished in \(elapsed).")
+        }
     }
 
     /// IOBluetooth calls this informal-protocol method on the target passed to performSDPQuery.
@@ -219,16 +224,21 @@ final class Discovery: NSObject {
             let state = device.isConnected() ? "connected" : "not connected"
             print("• \(label(device)) — \(state)")
             let services = Self.services(of: device)
-            if let (service, uuid, kind) = pickService(services), let channel = service.channelID {
-                let kindText = switch kind {
-                case let .vendor(suffix): "Soundcore vendor service (model \(suffix))"
-                case .serialPort: "Serial Port service"
-                }
-                print("    \(kindText) \(SoundcoreServiceUUID.format(uuid)) on RFCOMM channel \(channel)")
+            let picked = pickService(services)
+            if let (service, uuid, suffix) = picked, let channel = service.channelID {
+                print("    Soundcore vendor service (model \(suffix)) \(SoundcoreServiceUUID.format(uuid)) on RFCOMM channel \(channel)")
             } else if services.isEmpty {
                 print("    no cached SDP records")
             } else {
-                print("    no Soundcore or Serial Port RFCOMM service in \(services.count) cached SDP records")
+                print("    no Soundcore vendor RFCOMM service in \(services.count) cached SDP records")
+            }
+            // For Soundcore devices, show every RFCOMM service too, to help diagnose channel problems.
+            guard picked != nil || (device.name ?? "").localizedCaseInsensitiveContains("soundcore") else { continue }
+            for service in services {
+                guard let channel = service.channelID else { continue }
+                let uuids = service.classUUIDs.map(SoundcoreServiceUUID.format).joined(separator: ", ")
+                let name = service.name?.trimmingCharacters(in: .whitespaces) ?? "(unnamed)"
+                print("      RFCOMM \(String(channel).leftPadded(to: 2))  \(name) — \(uuids.isEmpty ? "no class UUID" : uuids)")
             }
         }
     }

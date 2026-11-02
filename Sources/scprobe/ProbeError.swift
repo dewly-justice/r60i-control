@@ -8,7 +8,7 @@ enum ProbeError: Error, CustomStringConvertible {
     case deviceNotFound(candidates: [String])
     case ambiguousDevice(candidates: [String])
     case invalidAddress(String)
-    case noService(device: String)
+    case noService(device: String, records: Int, connected: Bool)
     case openFailed(IOReturn)
     case writeFailed(IOReturn)
     case channelClosed
@@ -40,10 +40,12 @@ enum ProbeError: Error, CustomStringConvertible {
             "Several possible earbuds found: \(candidates.joined(separator: ", ")). Pick one with --address."
         case let .invalidAddress(address):
             "Not a valid Bluetooth address: \(address)"
-        case let .noService(device):
+        case let .noService(device, records, connected):
             """
-            \(device) has no Soundcore RFCOMM service (0CF12D31-…-D6832E7xxxxx) and no Serial Port \
-            service in its SDP records. Take the earbuds out of the case and try again.
+            Found no Soundcore RFCOMM service (0CF12D31-…-D6832E7xxxxx) among the \(records) SDP records \
+            of \(device), which is \(connected ? "connected" : "not connected") to this Mac.
+            • Take the earbuds out of the case, make sure they're connected to this Mac, and retry.
+            • `scprobe list` shows every RFCOMM service they publish; send me its output.
             """
         case let .openFailed(status):
             """

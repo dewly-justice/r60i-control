@@ -19,9 +19,9 @@ struct ReportTests {
 
     static let connection = ConnectionSummary(
         displayName: "soundcore R60i NC [00-00-00-d1-20-2c]",
-        channelID: 12,
+        channelID: 15,
         serviceUUID: SoundcoreServiceUUID.d1202c,
-        kind: .vendor(suffix: "1202C"),
+        vendorSuffix: "1202C",
         modelConfirmed: true,
         modelNote: "model ID 1202C from service UUID"
     )

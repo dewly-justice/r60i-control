@@ -27,7 +27,7 @@ own words. No OpenSCQ30 code is copied here.
 | Service selection | From the device's SDP service UUIDs, use the first one that matches the Soundcore vendor pattern. If none matches, fall back to the standard SPP UUID. | `sc/common/device.rs:89-101` (`SoundcoreDeviceConfig::default`), `lib/src/devices/soundcore.rs:42-49` |
 | Vendor UUID pattern | `0CF12D31-FAC3-4553-BD80-D6832E7xxxxx`. The first 108 bits must match; the last 5 hex digits can be anything (mask `ffffffff-ffff-ffff-ffff-fffffff00000`). | `lib/src/devices/soundcore.rs:43-48` |
 | Vendor UUID for D1202C | `0CF12D31-FAC3-4553-BD80-D6832E71202C` (the last digits spell the model ID) | `tools/soundcore-device-faker/devices/d1202c.toml` |
-| SPP fallback UUID | `00001101-0000-1000-8000-00805F9B34FB` | `lib/src/devices/soundcore.rs:42` |
+| SPP fallback UUID | `00001101-0000-1000-8000-00805F9B34FB`. OpenSCQ30 only; **we don't fall back** (see "Observed on a real R60i NC" below). | `lib/src/devices/soundcore.rs:42` |
 | RFCOMM channel | **Not hard-coded.** Read it from the SDP record of the selected service. | Linux uses BlueZ `connect_profile(uuid)`; Windows uses `RfcommDeviceService` by service ID |
 | Advertised name | `soundcore R60i NC` | `tools/soundcore-device-faker/devices/d1202c.toml` |
 | Checksum mode | Every frame ends with a checksum byte (OpenSCQ30's default `ChecksumKind::Suffix`). D1202 does not override it. | `sc/common/packet.rs` (`ChecksumKind`), `sc/common/device.rs:83-101` |
@@ -39,6 +39,26 @@ headers:
 `IOBluetoothDevice.openRFCOMMChannelSync(_:withChannelID:delegate:)`.
 Incoming bytes arrive on `rfcommChannelData(_:data:length:)` and we send with
 `writeSync(_:length:)`. CoreBluetooth cannot be used because it is BLE-only.
+
+**Observed on a real R60i NC** (firmware 03.89, macOS 27, 2026-11-02). macOS caches 14 SDP
+records for the earbuds. The ones with an RFCOMM channel:
+
+| RFCOMM channel | Service name | ServiceClassIDList | What it is |
+|---:|---|---|---|
+| 1 | — | `0x111E` / `0x1203` | Hands-Free / Audio Gateway (HFP) |
+| 12 | `TOTA` | `0x1101` (Serial Port) | likely the earbud chip's (BES) OTA/test channel |
+| 13 | `BESOTA` | `66666666-6666-6666-6666-666666666666` | BES firmware-update (OTA) channel |
+| **15** | `soundcore Liberty NC` | **`0CF12D31-FAC3-4553-BD80-D6832E71202C`** | **the control channel this document describes** |
+| 17 | `RFCOMM COM` | `DF21FE2C-2515-4FDB-8886-F12C4D67927C` | unknown |
+| 29 | — | `99999999-9999-9999-9999-999999999999` | unknown |
+
+Consequences for our implementation:
+- **ServiceClassIDList (attribute `0x0001`) is a bare UUID**, not the sequence of UUIDs the
+  Bluetooth spec requires. A parser that only accepts a sequence finds nothing. Accept both.
+- **No Serial Port fallback.** OpenSCQ30 falls back to `0x1101` when no vendor UUID is present,
+  but on this device that is `TOTA`, which looks like an OTA/test channel. We never connect
+  to it, or to `BESOTA`. Firmware update is out of scope.
+- The vendor channel was 15 here. It is still read from SDP rather than hard-coded.
 
 ---
 
@@ -203,6 +223,23 @@ Offsets were checked by decoding the real-device fixture in the `sc/d1202.rs` te
 The fixture body is 152 bytes, so the full frame is 162 bytes (`length = A2 00`). The parser
 needs at least 139 bytes and ignores anything after that.
 
+**Real R60i NC capture** (firmware 03.89; only the right bud out of the case; fixture
+`Fixtures.r60iStateFrame`). Also 152 bytes. Every offset above decodes to a plausible value.
+Where it differs from the OpenSCQ30 fixture:
+
+| Off | Field | Real R60i NC |
+|---:|---|---|
+| 0–5 | TWS / battery / charging | `01 00 FF 09 00 00` → host Right, buds not linked, left absent, right 10/10 |
+| 37 | Case battery | `07` → 80 % |
+| 60 | unknown | `FF` (fixture `00`) |
+| 62–81, 87–106 | HearID EQ data | all `FF`: HearID has never been run |
+| 82–85 | HearID timestamp | `FF 00 00 00` |
+| 86 | HearID type | `FF`, outside OpenSCQ30's `0…2` |
+| 119–126 | Sound modes | `02 55 00 01 01 00 00 01` → Normal, manual 5, adaptive nibble **5** (§6.2), NC Adaptive, wind suppression on, real-time adaptive on |
+| 127 | unknown | `31` (fixture `32`) |
+| 137–138 | Spatial audio | `01 00` → **on**, Music. Unverified whether the R60i NC has spatial audio (§10) |
+| 139+ | trailing | `01 00 00 00 00 00 00 01 FF FF FF FF FF` |
+
 ### 6.2 Sound modes block (8 bytes) — also the `06 01` push body and the `06 81` write body
 
 Source: `sc/d1202/structures.rs:18-97`,
@@ -211,7 +248,7 @@ Source: `sc/d1202/structures.rs:18-97`,
 | Byte | Field | Values |
 |---:|---|---|
 | 0 | Ambient sound mode | `0` Noise Canceling, `1` Transparency, `2` Normal |
-| 1 | high nibble: **manual ANC level**; low nibble: **adaptive ANC strength** | manual `1…5` (OpenSCQ30 clamps to 1…5). Adaptive `0` Weak, `1` Moderate, `2` Strong. **Adaptive strength is read-only** (the device reports it). |
+| 1 | high nibble: **manual ANC level**; low nibble: **adaptive ANC strength** | manual `1…5` (OpenSCQ30 clamps to 1…5). Adaptive `0` Weak, `1` Moderate, `2` Strong. **Adaptive strength is read-only**: the device reports it, and OpenSCQ30 shows it as information and rejects setting it (`sc/d1202/modules/sound_modes/setting_handler.rs`). **A real R60i NC reports `5`.** OpenSCQ30 maps that to Weak and so writes `0` back. We send the nibble back exactly as the device reported it. |
 | 2 | Transparency mode | `0` Fully transparent, `1` Vocal mode |
 | 3 | Noise-canceling mode | `0` Manual, `1` Adaptive, `2` Multi-scene |
 | 4 | Wind noise bitfield | bit 0 = wind-noise **suppression enabled** (settable); bit 1 = wind **currently detected** (read-only) |
@@ -488,7 +525,13 @@ This is the complete list, so it is the upper limit of what the app can offer:
   meaning unknown. We parse them, keep them, and never write them.
 - Sound-modes byte 5: meaning unknown. OpenSCQ30 always writes `0`, and we'll do the same.
 - The 2 extra bytes in `01 03` (battery) pushes: meaning unknown.
-- HearID: we only echo the values back unchanged. We won't build HearID features.
+- HearID: we only echo the values back unchanged. We won't build HearID features. On a real
+  R60i NC that has never run HearID, these bytes are `FF` and the type byte (86) is `FF`,
+  outside OpenSCQ30's enum. Check how `03 87` (§7.3) handles that before Phase 2 sends any EQ write.
+- Spatial audio: a real R60i NC reports it **on**. The R60i NC shares OpenSCQ30's module
+  with the P31i, so check against the Soundcore app before the app exposes spatial audio.
+- Adaptive ANC nibble: the R60i NC reports `5`, outside OpenSCQ30's `0…2` names. It may be a
+  1–5 level, as on some other models. It is read-only either way (§6.2).
 - Whether the device acknowledges `0B 81` / `0B 82`: OpenSCQ30 doesn't wait for an ACK, and
   neither will we.
 
@@ -520,7 +563,14 @@ Full state reply header            09 FF 00 00 01 01 01 A2 00 …152-byte body�
 | When | Packet |
 |---|---|
 | Connect | `01 01` RequestState, then parse §6.1 |
-| `set-mode anc\|transparency\|normal` | confirm the model (vendor UUID suffix `1202C`/`D1202`, or the name contains "R60i") → read state → copy the 8-byte sound-modes block → change **only byte 0** → apply the same normalizations OpenSCQ30 does (byte 5 = 0; manual level clamped to 1–5; wind bits 0–1 only). Refuse if any enum byte is unknown → send `06 81` → wait for ACK → send `01 01` again to confirm the change |
+| `set-mode anc\|transparency\|normal` | confirm the model (vendor UUID suffix `1202C`/`D1202`) → read state → copy the 8-byte sound-modes block → change **only byte 0** → apply the same normalizations OpenSCQ30 does (byte 5 = 0; manual level clamped to 1–5; wind bits 0–1 only), except that the read-only adaptive nibble is sent back as reported (§6.2). Refuse if any other enum byte is unknown → send `06 81` → wait for ACK → send `01 01` again to confirm the change |
+
+The connection only ever uses the vendor service (§1). It never uses the Serial Port or OTA
+channels.
+
+For the real R60i NC capture (sound modes `02 55 00 01 01 00 00 01`), `set-mode transparency`
+sends `08 EE 00 00 00 06 81 12 00 01 55 00 01 01 00 00 01 E8`. This is tested in
+`Tests/SoundcoreProtocolTests/R60iCaptureTests.swift`.
 
 Every other write in §7.2 is for Phase 2, and each one will be tested against captured
 fixtures before use.

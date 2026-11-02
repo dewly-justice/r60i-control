@@ -54,7 +54,10 @@ Only two commands (see `docs/protocol.md` §12):
   block it just read, with only the mode byte changed. It refuses if the earbuds report a
   value outside the documented set, or if the model can't be confirmed as D1202/D1202C.
 
-Exiting closes only the RFCOMM channel. The earbuds' audio connection to the Mac stays up.
+It connects only to the Soundcore vendor service (channel 15 on a tested R60i NC). The
+earbuds also publish firmware-update channels (`TOTA`, `BESOTA`), and scprobe never opens
+those. Exiting closes only the RFCOMM channel. The earbuds' audio connection to the Mac
+stays up.
 
 ### Troubleshooting
 
@@ -62,6 +65,7 @@ Exiting closes only the RFCOMM channel. The earbuds' audio connection to the Mac
 |---|---|
 | `No paired Bluetooth devices are visible` | Bluetooth permission for your terminal (above) |
 | `Couldn't find a paired Soundcore R60i NC` | `scprobe list`, then `--address AA-BB-CC-DD-EE-FF` |
+| `Found no Soundcore RFCOMM service` | Make sure the buds are connected to this Mac; `scprobe list` shows every RFCOMM service they publish |
 | `Opening the RFCOMM channel failed` | Take the buds out of the case; close the Soundcore app on your phone; retry |
 | `No reply to 01 01` | Re-run with `--hexdump` and send me the output |
 
